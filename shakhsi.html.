@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>پنل اختصاصی ایمان</title>
+    <style>
+        body { background: #000; color: #00ff00; font-family: Tahoma; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { border: 2px solid #00ff00; padding: 30px; border-radius: 20px; text-align: center; background: #111; }
+        input { padding: 10px; width: 80%; border-radius: 5px; border: 1px solid #00ff00; background: #000; color: #00ff00; margin-bottom: 15px; }
+        button { background: #00ff00; color: #000; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>🚀 ارسال پیام محرمانه</h2>
+        <input type="text" id="pMsg" placeholder="متن تست شخصی...">
+        <br>
+        <button onclick="sendPrivate()">ارسال به تلگرام</button>
+    </div>
+
+    <script>
+    function sendPrivate() {
+        const token = "8576028087:AAGUs0ZWXpLYp5mRN0XbI-2ZuIu4eLRtpNM";
+        const chatId = "8449439423";
+        const val = document.getElementById('pMsg').value;
+        if(!val) return alert("چیزی بنویس!");
+
+        const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent("🕵️‍♂️ پیام شخصی:\n" + val)}`;
+        fetch(url).then(res => { if(res.ok) alert("ارسال شد!"); });
+    }
+    </script>
+</body>
+</html>
