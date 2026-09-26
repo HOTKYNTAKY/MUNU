@@ -317,7 +317,7 @@ class H(SimpleHTTPRequestHandler):
                                      return self._json({"ok": False}, 403)
             mid = (max([m["id"] for m in MSGS], default=0) + 1)
             now = int(time.time() * 1000)
-            m = {"id": mid, "frm": disp_name(u), "to": to, "text": text, "t": now, "read": False}
+            m = {"id": mid, "frm": u, "dn": disp_name(u), "to": to, "text": text, "t": now, "read": False}
             rep = b.get("reply")
             if isinstance(rep, int): m["reply"] = rep
             med = b.get("media")
