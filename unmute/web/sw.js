@@ -1,5 +1,5 @@
-/* Unmute service worker — offline shell, cache-first static, network-only API */
-const V = "um2";
+/* Unmute service worker — HTML network-first (updates propagate fast), assets cached, API network-only */
+const V = "um3";
 const SHELL = ["/", "/index.html", "/style.css?v=2", "/app.js", "/views.js", "/chat.js", "/i18n.js", "/logo.svg", "/manifest.webmanifest"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -11,10 +11,21 @@ self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
   if (u.pathname.startsWith("/api/") || u.pathname === "/ws") return; // network only
   if (e.request.method !== "GET") return;
+  const isHTML = u.pathname === "/" || u.pathname === "/index.html" || e.request.mode === "navigate";
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: u.pathname === "/" }).then(hit => {
+    caches.open(V).then(async ch => {
+      if (isHTML) {
+        try {
+          const r = await fetch(e.request);
+          if (r.ok) ch.put(e.request, r.clone());
+          return r;
+        } catch (err) {
+          return await ch.match(e.request, { ignoreSearch: u.pathname === "/" });
+        }
+      }
+      const hit = await ch.match(e.request);
       const net = fetch(e.request).then(r => {
-        if (r.ok) { const c = r.clone(); caches.open(V).then(ch => ch.put(e.request, c)); }
+        if (r.ok) ch.put(e.request, r.clone());
         return r;
       }).catch(() => hit);
       return hit || net;
