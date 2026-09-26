@@ -132,8 +132,7 @@
   .media-ph{margin:4px 0;}
   .media-ph img,.media-ph video{max-width:100%;border-radius:10px;display:block;}
   .exp{display:block;font-size:10px;opacity:.7;margin-top:3px;}
-  .rply{border:none;background:transparent;font-size:10px;opacity:.9;cursor:pointer;padding:0;margin-right:6px;}
-  .theirs .rply{color:#f2f6fa;}
+  .tick{font-style:normal;}
   .reply-bar{
     display:flex;align-items:center;gap:8px;background:var(--acc-soft);border:1px solid var(--acc-line);
     border-radius:10px;padding:7px 10px;font-size:11px;color:var(--acc);margin-bottom:8px;
@@ -491,7 +490,7 @@ async function sendFileT(type, method, f){
 /* ================================================================
    پیام‌رسان + اطلاعیه‌ها
    ================================================================ */
-let ALLMSGS=[], lastMsgId=0, currentPeer=null, msgViewOpen=false, annViewOpen=false, pollT=null;
+let ALLMSGS=[], lastMsgId=0, lastSig="", currentPeer=null, msgViewOpen=false, annViewOpen=false, pollT=null;
 let replyTo=null, pendingMedia=null;
 
 function beep(){
@@ -521,6 +520,8 @@ function findMsg(id){ return ALLMSGS.find(m=>m.id===id); }
 
 async function hydrateMedia(root){
   for(const el of root.querySelectorAll(".media-ph")){
+    if(el.dataset.done) continue;
+    el.dataset.done="1";
     const id=+el.dataset.mid;
     try{
       const r=await fetch("/api/media?id="+id,{headers:{"Authorization":"Bearer "+TOKEN}});
@@ -549,8 +550,7 @@ function bubbleHTML(m){
   if(m.media) media=`<span class="media-ph" data-mid="${m.id}" data-mtype="${m.media.type}"></span>`;
   let exp="";
   if(m.exp) exp=`<span class="exp" data-exp="${m.exp}"></span>`;
-  const rbtn=`<button class="rply" data-reply="${m.id}">↩ پاسخ</button>`;
-  return `<div class="bubble ${mine?"mine":"theirs"}">${who}${q}${media}${m.text? m.text.replace(/</g,"&lt;") : ""}${exp}<span class="t">${fmtT(m.t)}${tick}</span>${rbtn}</div>`;
+  return `<div class="bubble ${mine?"mine":"theirs"}" data-id="${m.id}">${who}${q}${media}${m.text? m.text.replace(/</g,"&lt;") : ""}${exp}<span class="t">${fmtT(m.t)}<i class="tick">${tick}</i></span></div>`;
 }
 
 function toMe(m){ return m.to===USER || (USER==="__master__" && ADMIN_NAME && m.to===ADMIN_NAME); }
@@ -561,27 +561,90 @@ function threadList(){
   }
   return ALLMSGS.filter(m=>m.to!=="*");
 }
-async function renderThread(){
-  const list=threadList();
-  $("#thread-empty").classList.toggle("hidden", list.length>0);
-  $("#thread").innerHTML=list.map(bubbleHTML).join("");
-  $("#thread").scrollTop=$("#thread").scrollHeight;
-  $("#thread").querySelectorAll("[data-reply]").forEach(b=>b.onclick=()=>{
-    const m=findMsg(+b.dataset.reply);
-    if(!m) return;
-    replyTo=m;
-    $("#reply-txt").textContent="↩ پاسخ به "+(m.dn||m.frm)+": "+(m.text||"📎 رسانه").slice(0,60);
-    $("#reply-bar").classList.remove("hidden");
-    $("#m-text").focus();
+function setReplyTo(m){
+  replyTo=m;
+  $("#reply-txt").textContent="↩ پاسخ به "+(m.dn||m.frm)+": "+(m.text||"📎 رسانه").slice(0,60);
+  $("#reply-bar").classList.remove("hidden");
+  $("#m-text").focus();
+}
+/* کشیدن پیام به سمت چپ = پاسخ (مثل تلگرام/واتساپ) */
+function attachSwipeEl(el){
+  let sx=0, sy=0, dx=0, mode=null, skip=false;
+  el.addEventListener("touchstart", e=>{
+    skip=!!(e.target.closest && e.target.closest("video"));
+    if(skip) return;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY; dx=0; mode=null;
+    el.style.transition="none";
+  }, {passive:true});
+  el.addEventListener("touchmove", e=>{
+    if(skip) return;
+    const x=e.touches[0].clientX-sx, y=e.touches[0].clientY-sy;
+    if(!mode){
+      if(Math.abs(x)<10 && Math.abs(y)<10) return;
+      mode=Math.abs(x)>Math.abs(y)? "h":"v";
+    }
+    if(mode!=="h") return;
+    dx=Math.max(-80, Math.min(0, x));
+    el.style.transform="translateX("+dx+"px)";
+    el.style.opacity=dx<-25? ".8":"1";
+  }, {passive:true});
+  const done=()=>{
+    if(skip){ skip=false; return; }
+    el.style.transition="transform .18s ease, opacity .18s ease";
+    el.style.transform=""; el.style.opacity="";
+    if(mode==="h" && dx<=-50){
+      const m=findMsg(+el.dataset.id);
+      if(m) setReplyTo(m);
+    }
+    mode=null; dx=0;
+  };
+  el.addEventListener("touchend", done);
+  el.addEventListener("touchcancel", done);
+}
+function attachSwipe(container){
+  container.querySelectorAll(".bubble[data-id]").forEach(attachSwipeEl);
+}
+function updateTicks(container, list){
+  list.forEach(m=>{
+    if(m.frm!==USER) return;
+    const b=container.querySelector('.bubble[data-id="'+m.id+'"] .tick');
+    if(!b) return;
+    const t=m.read? " ✔✔":" ✔";
+    if(b.textContent!==t) b.textContent=t;
   });
-  await hydrateMedia($("#thread"));
+}
+/* رندر بدون پرش: فقط تغییرهای واقعی اعمال می‌شود */
+function syncBubbles(container, emptyEl, list, withSwipe){
+  emptyEl.classList.toggle("hidden", list.length>0);
+  const cur=Array.from(container.querySelectorAll(":scope > .bubble[data-id]"));
+  const curIds=cur.map(b=>b.dataset.id);
+  const ids=list.map(m=>String(m.id));
+  if(ids.join(",")===curIds.join(",")){ updateTicks(container,list); return; }
+  let prefix=curIds.length>0 && curIds.length<=list.length;
+  for(let i=0;i<curIds.length && prefix;i++) if(curIds[i]!==ids[i]) prefix=false;
+  if(prefix){
+    for(let i=curIds.length;i<list.length;i++){
+      const t=document.createElement("template");
+      t.innerHTML=bubbleHTML(list[i]);
+      const b=t.content.firstChild;
+      container.appendChild(b);
+      if(withSwipe) attachSwipeEl(b);
+    }
+    updateTicks(container,list);
+    container.scrollTop=container.scrollHeight;
+    hydrateMedia(container);
+    return;
+  }
+  container.innerHTML=list.map(bubbleHTML).join("");
+  if(withSwipe) attachSwipe(container);
+  container.scrollTop=container.scrollHeight;
+  hydrateMedia(container);
+}
+async function renderThread(){
+  syncBubbles($("#thread"), $("#thread-empty"), threadList(), true);
 }
 async function renderAnn(){
-  const list=ALLMSGS.filter(m=>m.to==="*");
-  $("#ann-empty").classList.toggle("hidden", list.length>0);
-  $("#ann-list").innerHTML=list.map(bubbleHTML).join("");
-  $("#ann-list").scrollTop=$("#ann-list").scrollHeight;
-  await hydrateMedia($("#ann-list"));
+  syncBubbles($("#ann-list"), $("#ann-empty"), ALLMSGS.filter(m=>m.to==="*"), false);
 }
 async function loadPeers(){
   if(ROLE!=="admin") return;
@@ -619,8 +682,14 @@ async function pollMsgs(){
     const b1=$("#unread"), b2=$("#unread-ann");
     if(unreadPriv>0 && !msgViewOpen){ b1.textContent=unreadPriv; b1.classList.remove("hidden"); } else b1.classList.add("hidden");
     if(unreadAnn>0 && !annViewOpen){ b2.textContent=unreadAnn; b2.classList.remove("hidden"); } else b2.classList.add("hidden");
-    if(msgViewOpen){ renderThread(); if(unreadPriv>0) api("/api/markread"); }
-    if(annViewOpen){ renderAnn(); if(unreadAnn>0) api("/api/markread"); }
+    const sig=ALLMSGS.map(m=>m.id+(m.read?"r":"")).join("|");
+    if(sig!==lastSig){
+      lastSig=sig;
+      if(msgViewOpen) renderThread();
+      if(annViewOpen) renderAnn();
+    }
+    if(msgViewOpen && unreadPriv>0) api("/api/markread");
+    if(annViewOpen && unreadAnn>0) api("/api/markread");
   }catch(e){}
 }
 
@@ -649,6 +718,10 @@ async function initMsg(){
   await pollMsgs();
   await api("/api/markread");
   renderThread();
+  if(!localStorage.getItem("gj_swipe_hint")){
+    localStorage.setItem("gj_swipe_hint","1");
+    setTimeout(()=>toast("💡 برای پاسخ دادن، پیام را به سمت چپ بکشید"), 700);
+  }
 }
 async function initAnn(){
   if(ROLE==="admin") $("#ann-compose").classList.remove("hidden");
