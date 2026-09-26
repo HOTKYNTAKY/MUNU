@@ -203,7 +203,7 @@ const $=s=>document.querySelector(s);
 const chatEl=$("#chat"), inputEl=$("#input"), sendBtn=$("#send");
 const SYS="تو «هوش گارد جاویدان» هستی؛ یک دستیار هوشمند، دقیق و خوش‌برخورد فارسی‌زبان. همیشه به فارسی روان و محترمانه پاسخ بده، مگر اینکه کاربر زبان دیگری بخواهد. برای پاسخ‌ها از ساختار تمیز (تیتر، لیست، بلوک کد) استفاده کن و از زیاده‌گویی پرهیز کن.";
 
-let CONV=[], MODEL="openai", controller=null, streaming=false, stick=true;
+let CONV=[], MODEL="openai", controller=null, streaming=false, stick=true, userStopped=false;
 
 /* ---------- ذخیره محلی ---------- */
 try{
@@ -344,6 +344,7 @@ async function streamDirect(messages,onDelta,signal){
 /* ---------- ارسال ---------- */
 async function send(text){
   if(streaming) return;
+  userStopped=false;
   text=(text||"").trim();
   if(!text) return;
   CONV.push({role:"user",content:text}); saveConv();
@@ -365,13 +366,14 @@ async function send(text){
     await streamServer(CONV,onDelta,controller.signal);
     setStatus("ok");
   }catch(e1){
-    if(controller.signal.aborted){ /* کاربر متوقف کرد */ }
+    if(userStopped){ /* کاربر خودش متوقف کرد */ }
     else if(!got){
       try{
-        await streamDirect(CONV,onDelta,controller.signal);
-        setStatus("direct");
+        const ctl2=new AbortController(), t2=setTimeout(()=>ctl2.abort(), 25000);
+        try{ await streamDirect(CONV,onDelta,ctl2.signal); setStatus("direct"); }
+        finally{ clearTimeout(t2); }
       }catch(e2){
-        if(!controller.signal.aborted) failed=(e2&&e2.message)||"خطا";
+        if(!userStopped) failed=(e2&&e2.message)||"خطا";
       }
     } else setStatus("err");
   }
@@ -382,20 +384,22 @@ async function send(text){
     CONV.push({role:"assistant",content:acc}); saveConv();
   }else if(failed){
     bubble.classList.add("err-b");
-    bubble.innerHTML="⚠️ "+(failed==="rate" ? "تعداد درخواست‌ها زیاد است؛ چند لحظه صبر کنید و دوباره بفرستید." : "پاسخی دریافت نشد. اتصال اینترنت یا سرویس هوش مصنوعی را بررسی کنید و دوباره تلاش کنید.<br><small style='opacity:.7'>"+failed+"</small>");
+    bubble.innerHTML="⚠️ "+(failed==="rate" ? "تعداد درخواست‌ها زیاد است؛ چند لحظه صبر کنید و دوباره بفرستید." : "پاسخی دریافت نشد؛ سرویس هوش مصنوعی شلوغ یا در دسترس نیست. دوباره تلاش کنید یا از فهرست بالا مدل دیگری انتخاب کنید.<br><small style='opacity:.7'>"+failed+"</small>");
+    CONV.pop(); saveConv();
+  }else if(userStopped){
+    bubble.classList.add("err-b");
+    bubble.innerHTML="⚠️ درخواست متوقف شد.";
     CONV.pop(); saveConv();
   }else{
     bubble.classList.add("err-b");
-    bubble.innerHTML="⚠️ درخواست متوقف شد.";
-    if(acc){ CONV.push({role:"assistant",content:acc}); saveConv(); bubble.innerHTML=md(acc); }
-    else CONV.pop();
-    saveConv();
+    bubble.innerHTML="⚠️ پاسخی دریافت نشد. دوباره تلاش کنید یا مدل دیگری انتخاب کنید.";
+    CONV.pop(); saveConv();
   }
   scrollDown();
 }
 
 sendBtn.addEventListener("click",()=>{
-  if(streaming){ controller&&controller.abort(); return; }
+  if(streaming){ userStopped=true; controller&&controller.abort(); return; }
   send(inputEl.value);
 });
 inputEl.addEventListener("keydown",e=>{

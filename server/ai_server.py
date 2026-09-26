@@ -37,6 +37,7 @@ OR_KEY = str(CFG.get("openrouter") or "").strip()
 _lock = threading.Lock()
 _rate = {}                                # ip -> [count, window_start]
 _models_cache = {"t": 0.0, "list": None}
+AI_TIMEOUT = int(os.environ.get("AI_TIMEOUT", "45"))
 
 # ---------------- پایداری ----------------
 def _persist(path, obj):
@@ -49,7 +50,7 @@ def _persist(path, obj):
         pass
 
 
-def _http(url, data=None, headers=None, timeout=180):
+def _http(url, data=None, headers=None, timeout=None):
     h = {"User-Agent": UA, "Accept": "*/*", "Referer": "https://pollinations.ai/"}
     if headers:
         h.update(headers)
@@ -59,7 +60,7 @@ def _http(url, data=None, headers=None, timeout=180):
         h["Content-Type"] = "application/json"
     req = urlrequest.Request(url, data=body, headers=h,
                              method="POST" if body is not None else "GET")
-    return urlrequest.urlopen(req, timeout=timeout, context=ssl.create_default_context())
+    return urlrequest.urlopen(req, timeout=timeout or AI_TIMEOUT, context=ssl.create_default_context())
 
 
 # ---------------- هندلر ----------------
@@ -255,8 +256,9 @@ class H(BaseHTTPRequestHandler):
         if OR_KEY and "/" in model:
             chain += [self._prov_or_stream, self._prov_or_plain]
         chain += [self._prov_openai_stream, self._prov_root_post, self._prov_get]
+        deadline = time.time() + 55
         for fn in chain:
-            if started["v"]:
+            if started["v"] or time.time() > deadline:
                 break
             try:
                 fn(clean, model, emit)
