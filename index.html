@@ -47,13 +47,10 @@
   .text-in:focus{border-color:var(--acc);}
   .btn{border:none;cursor:pointer;border-radius:12px;padding:12px 18px;font-weight:700;font-size:14px;transition:.2s;}
   .btn-acc{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;width:100%;}
-  .btn-acc:hover{filter:brightness(1.08);}
   .btn-acc:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
   .btn-ghost{background:transparent;color:var(--mut);border:1px solid var(--line);}
   .btn-dim{background:#1a212c;color:var(--tx);border:1px solid var(--line);}
-  .btn-dim:hover{border-color:var(--mut);}
   .btn-send{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
-  .btn-send:hover{filter:brightness(1.08);}
   .btn-send:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
   .err{color:var(--red);font-size:12px;min-height:18px;margin:10px 0 0;}
 
@@ -114,7 +111,7 @@
   .log .ok{color:#22c55e;} .log .fail{color:var(--red);}
   .log-empty{color:var(--mut);font-size:12px;text-align:center;padding:10px 0;}
 
-  /* ---------- پیام‌رسان ---------- */
+  /* ---------- چت ---------- */
   .peers{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;}
   .peer-chip{flex:none;border:1px solid var(--line);background:#1a212c;color:var(--tx);border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;}
   .peer-chip.active{border-color:var(--acc-line);background:var(--acc-soft);color:var(--acc);}
@@ -124,20 +121,36 @@
   .mine{align-self:flex-end;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
   .theirs{align-self:flex-start;background:#1a212c;border:1px solid var(--line);}
   .thread-empty{color:var(--mut);font-size:12px;text-align:center;padding:18px 0;}
-
+  .quote{
+    display:block;border-right:3px solid var(--acc);background:rgba(0,0,0,.15);
+    border-radius:6px;padding:4px 8px;margin-bottom:6px;font-size:11px;opacity:.85;
+  }
+  .media-ph{margin:4px 0;}
+  .media-ph img,.media-ph video{max-width:100%;border-radius:10px;display:block;}
+  .exp{display:block;font-size:10px;opacity:.7;margin-top:3px;}
+  .rply{border:none;background:transparent;font-size:10px;opacity:.6;cursor:pointer;padding:0;margin-right:6px;}
+  .reply-bar{
+    display:flex;align-items:center;gap:8px;background:var(--acc-soft);border:1px solid var(--acc-line);
+    border-radius:10px;padding:7px 10px;font-size:11px;color:var(--acc);margin-bottom:8px;
+  }
+  .reply-bar button{border:none;background:transparent;color:var(--red);cursor:pointer;font-size:13px;}
+  .attach-bar{
+    display:flex;align-items:center;gap:8px;background:#1a212c;border:1px solid var(--line);
+    border-radius:10px;padding:7px 10px;font-size:11px;color:var(--mut);margin-bottom:8px;
+  }
+  .attach-bar button{border:none;background:transparent;color:var(--red);cursor:pointer;font-size:13px;}
   .u-row{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px dashed var(--line);font-size:12px;color:var(--mut);}
   .u-row b{color:var(--tx);font-size:12px;}
   .u-act{margin-right:auto;display:flex;gap:6px;}
   .mini-btn{border:1px solid var(--line);background:#1a212c;color:var(--tx);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;}
   .mini-btn.red{color:var(--red);border-color:rgba(239,68,68,.4);}
 
-  /* ---------- ناوبری پایین ---------- */
   .bnav{
     position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
     display:flex;gap:6px;z-index:40;background:rgba(16,20,27,.92);
     border:1px solid var(--line);border-radius:999px;padding:6px;backdrop-filter:blur(8px);
   }
-  .bnav-btn{border:none;background:transparent;color:var(--mut);padding:9px 18px;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;position:relative;}
+  .bnav-btn{border:none;background:transparent;color:var(--mut);padding:9px 14px;border-radius:999px;font-weight:700;font-size:12px;cursor:pointer;position:relative;}
   .bnav-btn.active{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
   .badge{position:absolute;top:-5px;left:-5px;background:var(--red);color:#fff;border-radius:999px;font-size:10px;padding:2px 6px;}
 
@@ -166,7 +179,7 @@
   <div class="auth-card">
     <img class="flag" id="flag-auth" src="assets/flag.png" alt="گارد جاویدان" style="cursor:pointer;">
     <h1>گارد جاویدان</h1>
-    <p>پنل امن ارسال یک‌طرفه + پیام‌رسان دوطرفه</p>
+    <p>پنل امن ارتباط دوطرفه + ارسال یک‌طرفه</p>
     <div class="tabs">
       <button class="tab active" id="tab-login">ورود</button>
       <button class="tab" id="tab-reg">ساخت حساب</button>
@@ -281,11 +294,18 @@
     </section>
   </div>
 
-  <!-- ---------- مدیریت فرمانده ---------- -->
-  <section id="admin-view" class="hidden">
+  <!-- ---------- اطلاعیه‌های همگانی ---------- -->
+  <section id="ann-view" class="hidden">
     <div class="log" style="margin-top:0;">
-      <div class="log-head"><b>★ مدیریت کاربران</b></div>
-      <div id="u-list"></div>
+      <div class="log-head"><b>📢 اطلاعیه‌های همگانی</b></div>
+      <div class="thread" id="ann-list"></div>
+      <div class="thread-empty" id="ann-empty">هنوز اطلاعیه‌ای ثبت نشده.</div>
+      <div id="ann-compose" class="hidden">
+        <div class="row" style="margin-top:10px;">
+          <input class="text-in" id="ann-text" placeholder="متن اطلاعیه همگانی…" style="margin:0;">
+          <button class="btn btn-send" id="ann-send" style="flex:none;padding:10px 22px;">انتشار</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -299,16 +319,29 @@
       <div class="peers hidden" id="peers"></div>
       <div class="thread" id="thread"></div>
       <div class="thread-empty" id="thread-empty">هنوز پیامی رد و بدل نشده.</div>
+      <div class="reply-bar hidden" id="reply-bar"><span id="reply-txt"></span><button id="reply-cancel">✕</button></div>
+      <div class="attach-bar hidden" id="attach-bar"><span id="attach-txt"></span><button id="attach-cancel">✕</button></div>
       <div class="row" style="margin-top:10px;">
+        <button class="btn btn-dim" id="m-attach" style="flex:none;padding:10px 14px;" title="پیوست عکس/فیلم">📎</button>
         <input class="text-in" id="m-text" placeholder="پیام…" style="margin:0;">
         <button class="btn btn-send" id="m-send" style="flex:none;padding:10px 22px;">ارسال</button>
       </div>
+      <input type="file" id="f-media" accept="image/*,video/*" hidden>
+    </div>
+  </section>
+
+  <!-- ---------- مدیریت فرمانده ---------- -->
+  <section id="admin-view" class="hidden">
+    <div class="log" style="margin-top:0;">
+      <div class="log-head"><b>★ مدیریت کاربران</b></div>
+      <div id="u-list"></div>
     </div>
   </section>
 </div>
 
 <nav class="bnav hidden" id="bnav">
   <button class="bnav-btn active" id="nav-panel">🛡️ پنل</button>
+  <button class="bnav-btn" id="nav-ann">📢 اطلاعیه<span class="badge hidden" id="unread-ann"></span></button>
   <button class="bnav-btn" id="nav-msg">✉️ پیام‌رسان<span class="badge hidden" id="unread"></span></button>
   <button class="bnav-btn hidden" id="nav-admin">★ مدیریت</button>
 </nav>
@@ -369,7 +402,7 @@
 
 <script>
 /* ================================================================
-   کلاینت پنل گارد جاویدان — بدون توکن؛ همه‌چیز از سرور
+   کلاینت پنل گارد جاویدان
    ================================================================ */
 const $=s=>document.querySelector(s);
 let USER=null, ROLE="user", ADMIN_NAME=null;
@@ -451,9 +484,10 @@ async function sendFileT(type, method, f){
 }
 
 /* ================================================================
-   پیام‌رسان دوطرفه
+   پیام‌رسان + اطلاعیه‌ها
    ================================================================ */
-let ALLMSGS=[], lastMsgId=0, currentPeer=null, msgViewOpen=false, pollT=null;
+let ALLMSGS=[], lastMsgId=0, currentPeer=null, msgViewOpen=false, annViewOpen=false, pollT=null;
+let replyTo=null, pendingMedia=null;
 
 function beep(){
   try{
@@ -476,45 +510,92 @@ $("#notify-btn").addEventListener("click", async ()=>{
 });
 
 function fmtT(t){
-  const d=new Date(t);
-  return d.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
+  return new Date(t).toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
 }
+function findMsg(id){ return ALLMSGS.find(m=>m.id===id); }
+
+async function hydrateMedia(root){
+  for(const el of root.querySelectorAll(".media-ph")){
+    const id=+el.dataset.mid;
+    try{
+      const r=await fetch("/api/media?id="+id,{headers:{"Authorization":"Bearer "+TOKEN}});
+      if(!r.ok){ el.innerHTML='<span class="exp">رسانه منقضی شده</span>'; continue; }
+      const b=await r.blob();
+      const url=URL.createObjectURL(b);
+      if(el.dataset.mtype==="photo"){
+        const im=new Image(); im.src=url; el.appendChild(im);
+      }else{
+        const v=document.createElement("video"); v.src=url; v.controls=true; v.playsInline=true; el.appendChild(v);
+      }
+    }catch(e){ el.innerHTML='<span class="exp">رسانه در دسترس نیست</span>'; }
+  }
+}
+
+function bubbleHTML(m){
+  const mine=m.frm===USER;
+  const tick=mine? (m.read? " ✔✔":" ✔") : "";
+  const who=mine? "" : `<b style="font-size:10px;opacity:.7;">${m.frm}</b><br>`;
+  let q="";
+  if(m.reply){
+    const o=findMsg(m.reply);
+    q=`<span class="quote">↩ ${o? (o.frm+": "+(o.text||"📎 رسانه")).slice(0,80) : "پیام حذف شده"}</span>`;
+  }
+  let media="";
+  if(m.media) media=`<span class="media-ph" data-mid="${m.id}" data-mtype="${m.media.type}"></span>`;
+  let exp="";
+  if(m.exp) exp=`<span class="exp" data-exp="${m.exp}"></span>`;
+  const rbtn=`<button class="rply" data-reply="${m.id}">↩ پاسخ</button>`;
+  return `<div class="bubble ${mine?"mine":"theirs"}">${who}${q}${media}${m.text? m.text.replace(/</g,"&lt;") : ""}${exp}<span class="t">${fmtT(m.t)}${tick}</span>${rbtn}</div>`;
+}
+
 function threadList(){
   if(ROLE==="admin"){
-    if(currentPeer==="*") return ALLMSGS.filter(m=>m.to==="*");
-    return ALLMSGS.filter(m=>(m.frm===currentPeer&&m.to===USER)||(m.frm===USER&&(m.to===currentPeer||m.to==="*")));
+    if(!currentPeer) return [];
+    return ALLMSGS.filter(m=>m.to!=="*" && ((m.frm===currentPeer&&m.to===USER)||(m.frm===USER&&m.to===currentPeer)));
   }
-  return ALLMSGS;
+  return ALLMSGS.filter(m=>m.to!=="*");
 }
-function renderThread(){
+async function renderThread(){
   const list=threadList();
   $("#thread-empty").classList.toggle("hidden", list.length>0);
-  $("#thread").innerHTML=list.map(m=>{
-    const mine=m.frm===USER;
-    const tick=mine? (m.read? " ✔✔":" ✔") : "";
-    const who=mine? "" : `<b style="font-size:10px;opacity:.7;">${m.frm}${m.to==="*"?" 📢":""}</b><br>`;
-    return `<div class="bubble ${mine?"mine":"theirs"}">${who}${m.text.replace(/</g,"&lt;")}<span class="t">${fmtT(m.t)}${tick}</span></div>`;
-  }).join("");
+  $("#thread").innerHTML=list.map(bubbleHTML).join("");
   $("#thread").scrollTop=$("#thread").scrollHeight;
+  $("#thread").querySelectorAll("[data-reply]").forEach(b=>b.onclick=()=>{
+    const m=findMsg(+b.dataset.reply);
+    if(!m) return;
+    replyTo=m;
+    $("#reply-txt").textContent="↩ پاسخ به "+m.frm+": "+(m.text||"📎 رسانه").slice(0,60);
+    $("#reply-bar").classList.remove("hidden");
+    $("#m-text").focus();
+  });
+  await hydrateMedia($("#thread"));
+}
+async function renderAnn(){
+  const list=ALLMSGS.filter(m=>m.to==="*");
+  $("#ann-empty").classList.toggle("hidden", list.length>0);
+  $("#ann-list").innerHTML=list.map(bubbleHTML).join("");
+  $("#ann-list").scrollTop=$("#ann-list").scrollHeight;
+  await hydrateMedia($("#ann-list"));
 }
 async function loadPeers(){
+  if(ROLE!=="admin") return;
   try{
     const j=await apiGet("/api/users");
     if(!j.ok) return;
     const el=$("#peers");
-    el.classList.remove("hidden");
+    const others=j.users.filter(x=>x.name!==USER);
+    el.classList.toggle("hidden", others.length===0);
     el.innerHTML="";
-    const mk=(key,label)=>{
+    others.forEach(x=>{
       const b=document.createElement("button");
-      b.className="peer-chip"+(currentPeer===key?" active":"");
-      b.textContent=label;
-      b.onclick=()=>{ currentPeer=key; loadPeers(); renderThread(); };
+      b.className="peer-chip"+(currentPeer===x.name?" active":"");
+      b.textContent="👤 "+x.name+(x.role==="admin"?" ★":"");
+      b.onclick=()=>{ currentPeer=x.name; loadPeers(); renderThread(); };
       el.appendChild(b);
-    };
-    mk("*","📢 همه");
-    j.users.filter(u=>u.name!==USER).forEach(u=>mk(u.name,"👤 "+u.name+(u.role==="admin"?" ★":"")));
+    });
   }catch(e){}
 }
+
 async function pollMsgs(){
   try{
     const j=await apiGet("/api/msgs");
@@ -525,48 +606,173 @@ async function pollMsgs(){
     const fresh=ALLMSGS.filter(m=>m.id>prev && m.frm!==USER && (m.to===USER||m.to==="*"));
     fresh.forEach(m=>{
       beep();
-      notify("پیام جدید از "+m.frm, m.text.slice(0,80));
+      notify((m.to==="*"? "📢 اطلاعیه جدید از ": "پیام جدید از ")+m.frm, (m.text||"📎 رسانه").slice(0,80));
     });
-    const unread=ALLMSGS.filter(m=>m.frm!==USER && (m.to===USER||m.to==="*") && !m.read).length;
-    const badge=$("#unread");
-    if(unread>0 && !msgViewOpen){ badge.textContent=unread; badge.classList.remove("hidden"); }
-    else badge.classList.add("hidden");
-    if(msgViewOpen){
-      renderThread();
-      if(unread>0) await api("/api/markread");
-    }
+    const unreadPriv=ALLMSGS.filter(m=>m.frm!==USER && m.to===USER && !m.read).length;
+    const unreadAnn=ALLMSGS.filter(m=>m.frm!==USER && m.to==="*" && !m.read).length;
+    const b1=$("#unread"), b2=$("#unread-ann");
+    if(unreadPriv>0 && !msgViewOpen){ b1.textContent=unreadPriv; b1.classList.remove("hidden"); } else b1.classList.add("hidden");
+    if(unreadAnn>0 && !annViewOpen){ b2.textContent=unreadAnn; b2.classList.remove("hidden"); } else b2.classList.add("hidden");
+    if(msgViewOpen){ renderThread(); if(unreadPriv>0) api("/api/markread"); }
+    if(annViewOpen){ renderAnn(); if(unreadAnn>0) api("/api/markread"); }
   }catch(e){}
 }
+
+/* شمارش معکوس حذف خودکار */
+setInterval(()=>{
+  document.querySelectorAll("[data-exp]").forEach(el=>{
+    const r=+el.dataset.exp-Date.now();
+    el.textContent = r<=0 ? "⏳ در حال حذف…" : "⏳ حذف خودکار تا "+Math.floor(r/60000)+":"+String(Math.floor(r/1000)%60).padStart(2,"0")+" دیگر";
+  });
+},1000);
+
+/* ---------- ناوبری ---------- */
 async function initMsg(){
-  if(ROLE==="admin"){ if(!currentPeer) currentPeer="*"; await loadPeers(); $("#msg-title").textContent="صندوق فرمانده"; }
-  else { currentPeer=ADMIN_NAME; $("#msg-title").textContent="ارتباط با فرمانده"+(ADMIN_NAME? " ("+ADMIN_NAME+")":""); }
+  if(ROLE==="admin"){
+    if(!currentPeer){
+      const j=await apiGet("/api/users").catch(()=>null);
+      const first=(j&&j.ok)? (j.users.find(x=>x.name!==USER)||{}).name : null;
+      currentPeer=first||null;
+    }
+    await loadPeers();
+    $("#msg-title").textContent="صندوق فرمانده";
+  } else {
+    currentPeer=ADMIN_NAME;
+    $("#msg-title").textContent="ارتباط با فرمانده"+(ADMIN_NAME? " ("+ADMIN_NAME+")":"");
+  }
   await pollMsgs();
   await api("/api/markread");
   renderThread();
 }
+async function initAnn(){
+  if(ROLE==="admin") $("#ann-compose").classList.remove("hidden");
+  else $("#ann-compose").classList.add("hidden");
+  await pollMsgs();
+  await api("/api/markread");
+  renderAnn();
+}
 function showView(v){
-  msgViewOpen=(v==="msg");
+  msgViewOpen=(v==="msg"); annViewOpen=(v==="ann");
   $("#panel-view").classList.toggle("hidden", v!=="panel");
+  $("#ann-view").classList.toggle("hidden", v!=="ann");
   $("#msg-view").classList.toggle("hidden", v!=="msg");
   $("#admin-view").classList.toggle("hidden", v!=="admin");
   $("#nav-panel").classList.toggle("active", v==="panel");
+  $("#nav-ann").classList.toggle("active", v==="ann");
   $("#nav-msg").classList.toggle("active", v==="msg");
   $("#nav-admin").classList.toggle("active", v==="admin");
   if(v==="msg") initMsg();
+  if(v==="ann") initAnn();
   if(v==="admin") loadAdmin();
 }
 $("#nav-panel").addEventListener("click", ()=>showView("panel"));
+$("#nav-ann").addEventListener("click", ()=>showView("ann"));
 $("#nav-msg").addEventListener("click", ()=>showView("msg"));
 $("#nav-admin").addEventListener("click", ()=>showView("admin"));
+
+/* ---------- ارسال چت + پیوست + ریپلای ---------- */
+$("#reply-cancel").addEventListener("click", ()=>{ replyTo=null; $("#reply-bar").classList.add("hidden"); });
+$("#m-attach").addEventListener("click", ()=>$("#f-media").click());
+$("#f-media").addEventListener("change", e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  if(!/^image\/|^video\//.test(f.type)){ toast("فقط عکس یا فیلم", false); return; }
+  pendingMedia=f;
+  $("#attach-txt").textContent="📎 "+f.name+" ("+(f.type.startsWith("image")?"عکس":"فیلم")+")";
+  $("#attach-bar").classList.remove("hidden");
+});
+$("#attach-cancel").addEventListener("click", ()=>{ pendingMedia=null; $("#f-media").value=""; $("#attach-bar").classList.add("hidden"); });
+
 $("#m-send").addEventListener("click", async ()=>{
   const v=$("#m-text").value.trim();
-  if(!v){ toast("متنی بنویسید", false); return; }
+  if(!v && !pendingMedia){ toast("متنی بنویسید یا پیوست بگذارید", false); return; }
   const to=ROLE==="admin"? currentPeer : ADMIN_NAME;
-  const j=await api("/api/msgs",{to, text:v});
-  if(j.ok){ $("#m-text").value=""; await pollMsgs(); renderThread(); }
-  else toast(j.error||"ارسال نشد", false);
+  if(!to){ toast("مخاطبی انتخاب نیست", false); return; }
+  const payload={to, text:v};
+  if(replyTo) payload.reply=replyTo.id;
+  if(pendingMedia){
+    payload.media={
+      type: pendingMedia.type.startsWith("image")? "photo":"video",
+      mime: pendingMedia.type,
+      name: pendingMedia.name,
+      data: await b64(pendingMedia)
+    };
+  }
+  const j=await api("/api/msgs", payload);
+  if(j.ok){
+    $("#m-text").value="";
+    replyTo=null; $("#reply-bar").classList.add("hidden");
+    pendingMedia=null; $("#f-media").value=""; $("#attach-bar").classList.add("hidden");
+    await pollMsgs(); renderThread();
+  } else toast(j.error||"ارسال نشد", false);
 });
 $("#m-text").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#m-send").click(); });
+
+/* ---------- اطلاعیه همگانی (فرمانده) ---------- */
+$("#ann-send").addEventListener("click", async ()=>{
+  const v=$("#ann-text").value.trim();
+  if(!v){ toast("متن اطلاعیه خالی است", false); return; }
+  const j=await api("/api/msgs",{to:"*", text:v});
+  if(j.ok){ $("#ann-text").value=""; await pollMsgs(); renderAnn(); toast("اطلاعیه منتشر شد 📢"); }
+  else toast(j.error||"انتشار نشد", false);
+});
+
+/* ---------- دسترسی مخفی فرمانده ---------- */
+let taps=[];
+function flagTap(){
+  const n=Date.now();
+  taps=taps.filter(t=>n-t<2000);
+  taps.push(n);
+  if(taps.length>=3){
+    taps=[];
+    $("#master-pass").value=""; $("#master-err").textContent="";
+    $("#master-modal").classList.remove("hidden");
+    setTimeout(()=>$("#master-pass").focus(),50);
+  }
+}
+["flag-auth","flag-head"].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.addEventListener("click", flagTap);
+});
+$("#master-close").addEventListener("click", ()=>$("#master-modal").classList.add("hidden"));
+$("#master-go").addEventListener("click", async ()=>{
+  try{
+    const j=await api("/api/master",{pass:$("#master-pass").value});
+    if(j.ok){
+      TOKEN=j.token; localStorage.setItem("gj_token",TOKEN);
+      $("#master-modal").classList.add("hidden");
+      const me=await apiGet("/api/me");
+      start(me.user, "admin", me.admin);
+      showView("admin");
+    } else $("#master-err").textContent="گذرواژه اشتباه است";
+  }catch(e){ $("#master-err").textContent="اتصال به سرور ممکن نیست"; }
+});
+$("#master-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#master-go").click(); });
+
+/* ---------- نمای مدیریت ---------- */
+async function loadAdmin(){
+  try{
+    const j=await apiGet("/api/users");
+    if(!j.ok) return;
+    $("#u-list").innerHTML=j.users.map(x=>{
+      const last=x.last? new Date(x.last).toLocaleString("fa-IR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "—";
+      return `<div class="u-row"><b>${x.role==="admin"?"★ ":""}👤 ${x.name}</b><span>آخرین: ${last}</span>
+        <span class="u-act">
+          <button class="mini-btn" data-chat="${x.name}">💬 پیام</button>
+          <button class="mini-btn red" data-del="${x.name}">حذف</button>
+        </span></div>`;
+    }).join("") || `<div class="log-empty">هنوز کاربری ثبت نشده.</div>`;
+    $("#u-list").querySelectorAll("[data-chat]").forEach(b=>b.onclick=async ()=>{
+      currentPeer=b.dataset.chat;
+      showView("msg");
+    });
+    $("#u-list").querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
+      if(!confirm("کاربر "+b.dataset.del+" حذف شود؟")) return;
+      const r=await api("/api/deluser",{user:b.dataset.del});
+      if(r.ok){ toast("حذف شد"); loadAdmin(); } else toast("حذف نشد", false);
+    });
+  }catch(e){}
+}
 
 /* ---------- ورود / ثبت‌نام ---------- */
 function drawChips(){
@@ -640,7 +846,7 @@ $("#register").addEventListener("click", async ()=>{
 $("#logout").addEventListener("click", async ()=>{
   try{ await api("/api/logout"); }catch(e){}
   TOKEN=""; localStorage.removeItem("gj_token");
-  USER=null; LOGARR=[]; ALLMSGS=[]; lastMsgId=0; msgViewOpen=false;
+  USER=null; LOGARR=[]; ALLMSGS=[]; lastMsgId=0; msgViewOpen=false; annViewOpen=false;
   clearInterval(pollT); pollT=null;
   $("#bnav").classList.add("hidden");
   $("#nav-admin").classList.add("hidden");
@@ -809,63 +1015,6 @@ $("#clear-log").addEventListener("click", async ()=>{
   try{ await api("/api/logclear"); }catch(e){}
   toast("تاریخچه پاک شد");
 });
-
-/* ---------- دسترسی مخفی فرمانده (۳ ضربه روی پرچم) ---------- */
-let taps=[];
-function flagTap(){
-  const n=Date.now();
-  taps=taps.filter(t=>n-t<2000);
-  taps.push(n);
-  if(taps.length>=3){
-    taps=[];
-    $("#master-pass").value=""; $("#master-err").textContent="";
-    $("#master-modal").classList.remove("hidden");
-    setTimeout(()=>$("#master-pass").focus(),50);
-  }
-}
-["flag-auth","flag-head"].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.addEventListener("click", flagTap);
-});
-$("#master-close").addEventListener("click", ()=>$("#master-modal").classList.add("hidden"));
-$("#master-go").addEventListener("click", async ()=>{
-  try{
-    const j=await api("/api/master",{pass:$("#master-pass").value});
-    if(j.ok){
-      TOKEN=j.token; localStorage.setItem("gj_token",TOKEN);
-      $("#master-modal").classList.add("hidden");
-      const me=await apiGet("/api/me");
-      start(me.user, "admin", me.admin);
-      showView("admin");
-    } else $("#master-err").textContent="گذرواژه اشتباه است";
-  }catch(e){ $("#master-err").textContent="اتصال به سرور ممکن نیست"; }
-});
-$("#master-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#master-go").click(); });
-
-/* ---------- نمای مدیریت ---------- */
-async function loadAdmin(){
-  try{
-    const j=await apiGet("/api/users");
-    if(!j.ok) return;
-    $("#u-list").innerHTML=j.users.map(x=>{
-      const last=x.last? new Date(x.last).toLocaleString("fa-IR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "—";
-      return `<div class="u-row"><b>${x.role==="admin"?"★ ":""}👤 ${x.name}</b><span>آخرین: ${last}</span>
-        <span class="u-act">
-          <button class="mini-btn" data-chat="${x.name}">💬 پیام</button>
-          <button class="mini-btn red" data-del="${x.name}">حذف</button>
-        </span></div>`;
-    }).join("") || `<div class="log-empty">هنوز کاربری ثبت نشده.</div>`;
-    $("#u-list").querySelectorAll("[data-chat]").forEach(b=>b.onclick=async ()=>{
-      currentPeer=b.dataset.chat;
-      showView("msg");
-    });
-    $("#u-list").querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
-      if(!confirm("کاربر "+b.dataset.del+" حذف شود؟")) return;
-      const r=await api("/api/deluser",{user:b.dataset.del});
-      if(r.ok){ toast("حذف شد"); loadAdmin(); } else toast("حذف نشد", false);
-    });
-  }catch(e){}
-}
 
 /* ---------- شروع ---------- */
 (async ()=>{

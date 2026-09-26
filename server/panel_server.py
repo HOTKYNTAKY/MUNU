@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 پنل گارد جاویدان — سرور سبک (فقط کتابخانه استاندارد پایتون)
-- احراز هویت چندکاربره (هش pbkdf2 + توکن سشن)
+- احراز هویت چندکاربره (pbkdf2 + سشن)، دسترسی مخفی فرمانده
+- پیام‌رسان دوطرفه: ریپلای، رسانه (عکس/فیلم) با حذف خودکار ۵ دقیقه‌ای
+- بخش اطلاعیه‌های همگانی
 - پروکسی ارسال به تلگرام (توکن فقط سمت سرور)
-- سرو استاتیک پنل (index.html / assets / menu.html)
-پورت: متغیر محیطی PORT یا آرگومان اول، پیش‌فرض 8787
+پورت: PORT یا آرگومان اول، پیش‌فرض 8787
 """
 import json, os, re, sys, secrets, hashlib, base64, threading, urllib.request, uuid, time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -21,6 +22,7 @@ USERS_F  = os.path.join(BASE, "users.json")
 SESS_F   = os.path.join(BASE, "sessions.json")
 LOGS_F   = os.path.join(BASE, "logs.json")
 MSGS_F   = os.path.join(BASE, "msgs.json")
+MEDIA_D  = os.path.join(BASE, "media")
 
 _lock = threading.Lock()
 USERS  = {}
@@ -56,17 +58,29 @@ def admin_name():
         return min(USERS.items(), key=lambda kv: kv[1].get("c", 0))[0]
     return None
 
-def is_admin(u):
-    if u == MASTER_USER: return True
-    return u == admin_name()
-
 MASTER_USER = "__master__"
 MASTER_SALT = "GJ-MASTER-2026"
 MASTER_HASH = "dc03472d913931f2c8029876cb1e214cf9482816bf603d9f69bad66caefb4e59"
 
+def is_admin(u):
+    if u == MASTER_USER: return True
+    return u == admin_name()
+
 def disp_name(u):
     if u == MASTER_USER: return admin_name() or "فرمانده"
     return u
+
+def sweep_expired():
+    now = int(time.time() * 1000)
+    dead = [m for m in MSGS if m.get("exp") and now > m["exp"]]
+    if dead:
+        for m in dead:
+            try:
+                if m.get("media"): os.remove(os.path.join(MEDIA_D, m["media"]["f"]))
+            except Exception:
+                pass
+        MSGS[:] = [m for m in MSGS if not (m.get("exp") and now > m["exp"])]
+        _save_msgs()
 
 def pwhash(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 120000).hex()
@@ -96,7 +110,6 @@ class H(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    # ---------- کمکی ----------
     def _json(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
@@ -125,23 +138,33 @@ class H(SimpleHTTPRequestHandler):
                 _save_users()
             return s["user"]
 
-    # ---------- استاتیک (فقط سفیدلیست) ----------
     def do_GET(self):
-        p = self.path.split("?")[0]
+        pq = self.path
+        p = pq.split("?")[0]
+        if pq.startswith("/api/media"):
+            return self.api_media()
         if p.startswith("/api/"):
             if p == "/api/health":
                 return self._json({"ok": True})
             if p == "/api/me":
                 u = self._user()
                 if not u: return self._json({"ok": False})
-                with _lock:
-                    role = "admin" if is_admin(u) else "user"
+                role = "admin" if is_admin(u) else "user"
                 return self._json({"ok": True, "user": u, "role": role, "admin": admin_name()})
+            if p == "/api/bot":
+                u = self._user()
+                if not u: return self._json({"ok": False}, 401)
+                try:
+                    j = tg("getMe", {})
+                    return self._json({"ok": bool(j.get("ok")), "username": (j.get("result") or {}).get("username", "")})
+                except Exception as e:
+                    return self._json({"ok": False, "desc": str(e)[:100]})
             if p == "/api/msgs":
                 u = self._user()
                 if not u: return self._json({"ok": False}, 401)
                 adm = is_admin(u)
                 with _lock:
+                    sweep_expired()
                     out = []
                     for m in MSGS:
                         if adm or m["frm"] == u or m["to"] == u or m["to"] == "*" or m["frm"] in (admin_name(), "فرمانده"):
@@ -153,25 +176,36 @@ class H(SimpleHTTPRequestHandler):
                 with _lock:
                     lst = [{"name": n, "role": ("admin" if is_admin(n) else "user"), "last": x.get("last", 0), "c": x.get("c", 0)} for n, x in USERS.items()]
                 return self._json({"ok": True, "users": lst})
-            if p == "/api/bot":
-                u = self._user()
-                if not u: return self._json({"ok": False}, 401)
-                try:
-                    j = tg("getMe", {})
-                    return self._json({"ok": bool(j.get("ok")), "username": (j.get("result") or {}).get("username", "")})
-                except Exception as e:
-                    return self._json({"ok": False, "desc": str(e)[:100]})
-            if p == "/api/log":
-                u = self._user()
-                if not u: return self._json({"ok": False}, 401)
-                with _lock:
-                    return self._json({"ok": True, "log": LOGS.get(u, [])})
             return self._json({"ok": False}, 404)
         if p in ALLOWED_STATIC or (p.startswith("/assets/") and ".." not in p and p.lower().endswith((".png", ".jpg", ".jpeg", ".svg", ".css", ".js", ".webp"))):
             return super().do_GET()
         return self._json({"ok": False}, 404)
 
-    # ---------- API ----------
+    def api_media(self):
+        u = self._user()
+        if not u: return self._json({"ok": False}, 401)
+        try:
+            qid = int(self.path.split("id=")[1].split("&")[0])
+        except Exception:
+            return self._json({"ok": False}, 400)
+        with _lock:
+            sweep_expired()
+            m = next((x for x in MSGS if x["id"] == qid), None)
+        if not m or not m.get("media"): return self._json({"ok": False}, 404)
+        if not (is_admin(u) or m["frm"] == u or m["to"] == u or m["to"] == "*"):
+            return self._json({"ok": False}, 403)
+        try:
+            with open(os.path.join(MEDIA_D, m["media"]["f"]), "rb") as f:
+                data = f.read()
+        except Exception:
+            return self._json({"ok": False}, 404)
+        self.send_response(200)
+        self.send_header("Content-Type", m["media"].get("mime", "application/octet-stream"))
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_POST(self):
         p = self.path.split("?")[0]
         try:
@@ -201,16 +235,11 @@ class H(SimpleHTTPRequestHandler):
         except Exception as e:
             return self._json({"ok": False, "error": str(e)[:200]}, 500)
 
-    # ---------- احراز هویت ----------
     def _rate(self, name):
-        import time
         c, until = FAIL.get(name, (0, 0))
-        if time.time() < until:
-            return False
-        return True
+        return not (time.time() < until)
 
     def _fail(self, name):
-        import time
         c, _ = FAIL.get(name, (0, 0))
         c += 1
         FAIL[name] = (c, time.time() + 300) if c >= 6 else (c, 0)
@@ -245,7 +274,7 @@ class H(SimpleHTTPRequestHandler):
 
     def _make_session(self, name):
         tok = secrets.token_hex(24)
-        SESS[tok] = {"user": name, "c": int(__import__("time").time() * 1000)}
+        SESS[tok] = {"user": name, "c": int(time.time() * 1000)}
         _save_sess()
         return tok
 
@@ -257,7 +286,6 @@ class H(SimpleHTTPRequestHandler):
             _save_sess()
         return self._json({"ok": True})
 
-    # ---------- مدیریت ----------
     def api_deluser(self, u):
         if not is_admin(u):          return self._json({"ok": False}, 403)
         b = self._body()
@@ -273,12 +301,12 @@ class H(SimpleHTTPRequestHandler):
             _save_users(); _save_sess(); _save_msgs(); _save_logs()
         return self._json({"ok": True})
 
-    # ---------- پیام‌رسان دوطرفه ----------
+    # ---------- پیام‌رسان ----------
     def api_msgs(self, u):
         b = self._body()
         to = (b.get("to") or "").strip()
         text = (b.get("text") or "").strip()
-        if not text:                 return self._json({"ok": False, "error": "empty"}, 400)
+        if not text and not b.get("media"): return self._json({"ok": False, "error": "empty"}, 400)
         if len(text) > 4000:         return self._json({"ok": False, "error": "too long"}, 400)
         adm = is_admin(u)
         with _lock:
@@ -288,7 +316,25 @@ class H(SimpleHTTPRequestHandler):
             elif not adm and to != admin_name():
                                      return self._json({"ok": False}, 403)
             mid = (max([m["id"] for m in MSGS], default=0) + 1)
-            m = {"id": mid, "frm": disp_name(u), "to": to, "text": text, "t": int(time.time() * 1000), "read": False}
+            now = int(time.time() * 1000)
+            m = {"id": mid, "frm": disp_name(u), "to": to, "text": text, "t": now, "read": False}
+            rep = b.get("reply")
+            if isinstance(rep, int): m["reply"] = rep
+            med = b.get("media")
+            if med and med.get("data"):
+                if med.get("type") not in ("photo", "video"):
+                    return self._json({"ok": False, "error": "bad media"}, 400)
+                raw = base64.b64decode(med["data"])
+                if len(raw) > 25 * 1024 * 1024:
+                    return self._json({"ok": False, "error": "too big"}, 400)
+                os.makedirs(MEDIA_D, exist_ok=True)
+                safe = re.sub(r"[^A-Za-z0-9._-]", "_", (med.get("name") or "file"))[:60]
+                fname = "%d_%s" % (mid, safe)
+                with open(os.path.join(MEDIA_D, fname), "wb") as f:
+                    f.write(raw)
+                m["media"] = {"type": med["type"], "f": fname,
+                              "mime": (med.get("mime") or ("image/jpeg" if med["type"] == "photo" else "video/mp4"))}
+                m["exp"] = now + 5 * 60 * 1000
             MSGS.append(m)
             _save_msgs()
         return self._json({"ok": True, "id": mid})
@@ -301,7 +347,7 @@ class H(SimpleHTTPRequestHandler):
             _save_msgs()
         return self._json({"ok": True})
 
-    # ---------- ارسال ----------
+    # ---------- ارسال به تلگرام ----------
     def api_send(self, u):
         b = self._body()
         method = b.get("method")
