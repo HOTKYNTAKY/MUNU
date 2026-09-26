@@ -123,9 +123,15 @@ def msg_json(m, viewer, with_state=True):
         rx.setdefault(r["emoji"], []).append(r["user_id"])
     out["reactions"] = rx
     if with_state and m["sender_id"] == viewer:
-        st = row("SELECT delivered_at, read_at FROM message_state WHERE message_id=? AND user_id!=?", (m["id"], viewer))
-        out["delivered"] = bool(st and st["delivered_at"])
-        out["read"] = bool(st and st["read_at"])
+        # group-aware ticks: delivered/read = ALL other members (same as before for DMs)
+        tot = row("SELECT COUNT(*) n FROM chat_members WHERE chat_id=? AND user_id!=?", (m["chat_id"], viewer))
+        n = tot["n"] if tot else 0
+        if n <= 0:
+            out["delivered"] = out["read"] = True
+        else:
+            st = row("SELECT COALESCE(SUM(delivered_at>0),0) d, COALESCE(SUM(read_at>0),0) r FROM message_state WHERE message_id=? AND user_id!=?", (m["id"], viewer))
+            out["delivered"] = bool(st and st["d"] >= n)
+            out["read"] = bool(st and st["r"] >= n)
     return out
 
 
@@ -257,13 +263,17 @@ def send_message(handler, u, chat_id, b):
     me = u["id"]
     if not row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, me)):
         return handler.j({"ok": False, "error": "not_member"}, 403)
-    peer = chat_peer(chat_id, me)
-    if peer:
-        if has_blocked(me, peer["id"]) or has_blocked(peer["id"], me):
-            return handler.j({"ok": False, "error": "blocked"}, 403)
-        ps = settings_of(peer["id"])
-        if not priv_allow(ps["priv_msg"], me, peer["id"]):
-            return handler.j({"ok": False, "error": "privacy"}, 403)
+    ch = row("SELECT * FROM chats WHERE id=?", (chat_id,))
+    if not ch:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if (ch["type"] or "dm") == "dm":
+        peer = chat_peer(chat_id, me)
+        if peer:
+            if has_blocked(me, peer["id"]) or has_blocked(peer["id"], me):
+                return handler.j({"ok": False, "error": "blocked"}, 403)
+            ps = settings_of(peer["id"])
+            if not priv_allow(ps["priv_msg"], me, peer["id"]):
+                return handler.j({"ok": False, "error": "privacy"}, 403)
     text = (b.get("text") or "").strip()[:4000]
     att_ids = b.get("atts") or []
     if not text and not att_ids:

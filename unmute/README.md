@@ -60,8 +60,8 @@ users(id, username UNIQUE NOCASE, display_name, email UNIQUE NOCASE,
       status[active|banned|suspended], verified, created_at, last_seen)
 sessions(token PK, user_id→users, created_at, last_active, expires_at,
          remember, ua, ip)
-chats(id, type[dm], created_at)
-chat_members(chat_id, user_id, pinned, archived, muted, deleted_at, last_read)  -- PK(chat_id,user_id)
+chats(id, type[dm|group], title, avatar(emoji|#color), owner_id, created_at)
+chat_members(chat_id, user_id, role[owner|admin|member, groups], pinned, archived, muted, deleted_at, last_read)  -- PK(chat_id,user_id)
 messages(id, chat_id→chats, sender_id→users, type[text|image|video|file|audio|voice],
          text, reply_to→messages [thread], edited_at, deleted, deleted_me CSV, created_at)
 message_state(message_id, user_id, delivered_at, read_at)  -- PK(message_id,user_id): تیک‌ها
@@ -71,7 +71,7 @@ attachments(id, owner_id, message_id, kind, filename, mime, size, path, meta JSO
 pins(chat_id, message_id, by_id, created_at)                -- PK(chat_id,message_id)
 contacts(owner_id, user_id, created_at)      blocked(user_id, blocked_id, created_at)
 reports(id, reporter_id, target_id, reason, details, status[open|resolved], created_at)
-notifications(id, user_id, kind[message|system], payload JSON, read, created_at)
+notifications(id, user_id, kind[message|group|system], payload JSON, read, created_at)
 settings(user_id PK, theme, accent, font_size, lang,
          notif_msg, notif_sound, notif_browser,
          priv_msg, priv_photo, priv_lastseen, priv_online, priv_profile)
@@ -80,7 +80,7 @@ INDEX: messages(chat_id,id), messages(sender_id), sessions(user_id),
        notifications(user_id,read), attachments(message_id)
 ```
 
-نکته‌ها: `reply_to` همان Thread/Reply است؛ `deleted_me` لیست جداشده با کاما؛
+نکته‌ها: `reply_to` همان Thread/Reply است؛ `deleted_me` لیست جداشده با کاما؛ تیک گروه = خوانده‌شدن توسط همهٔ اعضای دیگر؛ دابل‌تاپ/دابل‌کلیک روی پیام = ❤️ (کلاینت).
 `meta` پیوست JSON است (`{voice, duration, waveform[]}` برای ویس).
 
 ## 4. مستندات API
@@ -122,7 +122,7 @@ INDEX: messages(chat_id,id), messages(sender_id), sessions(user_id),
 ### 4.4 چت و پیام
 | متد | مسیر | توضیح |
 |---|---|---|
-| GET | `/api/chats` | لیست چت‌ها: `peer,last,unread,pinned,archived,muted` (مرتب: سنجاق → تازه‌ترین) |
+| GET | `/api/chats` | لیست چت‌ها: دایرکت `peer` / گروه `group{title,avatar,members,online,owner_id,my_role}` + `last,last_sender,unread,...` |
 | POST | `/api/chats/dm` | `{username}` ساخت/بازگشایی دایرکت → `{chat_id}` |
 | GET | `/api/chats/:id/messages?before=&around=&limit=` | صفحه‌بندی تاریخچه + `pins` + `older` |
 | POST | `/api/chats/:id/messages` | `{text?, atts?[], reply_to?}` → `{msg}` (با `delivered`) |
@@ -133,6 +133,13 @@ INDEX: messages(chat_id,id), messages(sender_id), sessions(user_id),
 | POST | `/api/messages/:id/react` | `{emoji}` تاگل ری‌اکشن |
 | POST | `/api/messages/:id/forward` | `{chat_id}` فوروارد (با کپی پیوست) |
 | POST | `/api/messages/:id/pin` | `{pin:true/false}` |
+| POST | `/api/chats/group` | `{title, avatar(emoji\|#color)?, members[usernames]?}` ساخت گروه (سقف ۲۰۰ عضو) → `{chat_id}` |
+| GET | `/api/chats/:id/members` | `{group, members[{...user_pub,role,online}], my_role}` |
+| PATCH | `/api/chats/:id` | `{title?, avatar?}` ویرایش گروه (مالک/مدیر) |
+| POST | `/api/chats/:id/members` | `{username}` افزودن عضو (مالک/مدیر) |
+| DELETE | `/api/chats/:id/members/:user` | حذف عضو (مالک/مدیر؛ مدیر فقط member) |
+| POST | `/api/chats/:id/role` | `{username, role[admin\|member\|owner]}` نقش/انتقال مالکیت (فقط مالک) |
+| POST | `/api/chats/:id/leave` | ترک گروه (خروج مالک → قدیمی‌ترین عضو مالک می‌شود؛ آخرین نفر → حذف گروه) |
 
 ### 4.5 مدیا / اعلان / جستجو
 | متد | مسیر | توضیح |
@@ -167,6 +174,7 @@ INDEX: messages(chat_id,id), messages(sender_id), sessions(user_id),
 | `typing` | `{chat_id, uid, name}` | در حال نوشتن |
 | `presence` | `{uid, online}` | تغییر وضعیت آنلاین |
 | `notify` | `{kind, payload}` | اعلان جدید |
+| `chats_changed` | `{}` | تغییر لیست چت‌ها/اعضا (کلاینت `loadChats` + `loadChatMembers` می‌کند) |
 
 ## 5. اجرای محلی (Local)
 

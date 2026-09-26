@@ -1,12 +1,15 @@
 /* ================= Unmute chat ================= */
 "use strict";
 S.older = true; S.replyTo = null; S.editId = null; S.loadingMsgs = false;
+S.gmembers = []; S.gmemberChat = 0; S.gname = {};
 let msgById = {}, showArchived = false, nearBottom = true, jumpCount = 0;
+function nameColor(n) { let h = 0; const s = String(n || "?"); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return "hsl(" + h + ",60%,60%)"; }
+function isGroup(c) { return c && (c.type === "group" || !!c.group); }
 
 async function loadChats() {
   try {
     const r = await GET("/api/chats");
-    if (r.data.ok) { S.chats = r.data.chats; S.chats.forEach(c => { S.onlineMap[c.peer.id] = !!c.peer.online; }); }
+    if (r.data.ok) { S.chats = r.data.chats; S.chats.forEach(c => { if (c.peer) S.onlineMap[c.peer.id] = !!c.peer.online; }); }
   } catch (e) {}
   paintPane(); updateBadge();
 }
@@ -24,6 +27,7 @@ function paintPane() {
   const archN = S.chats.filter(c => c.archived).length;
   w.innerHTML = '<aside class="pane" id="pane">' +
     '<div class="pane-head"><h2>' + t("chats") + '</h2>' +
+    '<button class="icon-btn" id="pane-group" title="' + t("new_group") + '" aria-label="' + t("new_group") + '">👥</button>' +
     '<button class="icon-btn" id="pane-new" title="' + t("new_chat") + '" aria-label="' + t("new_chat") + '">✚</button></div>' +
     '<div class="srch"><span>🔍</span><input id="pane-q" placeholder="' + t("search") + '" aria-label="' + t("search") + '"></div>' +
     '<div class="chat-list" id="clist" role="list"></div>' +
@@ -31,6 +35,7 @@ function paintPane() {
     (showArchived ? '<div style="padding:8px 14px"><button class="link" id="arch-back">← ' + t("chats") + "</button></div>" : "") +
     "</aside>";
   $("#pane-new").onclick = () => { location.hash = "#/search"; };
+  $("#pane-group").onclick = () => newGroupDlg();
   const ab = $("#arch-btn"); if (ab) ab.onclick = () => { showArchived = true; paintPane(); };
   const ab2 = $("#arch-back"); if (ab2) ab2.onclick = () => { showArchived = false; paintPane(); };
   $("#pane-q").oninput = debounce(e => paintChatItems(e.target.value.trim()), 200);
@@ -39,17 +44,21 @@ function paintPane() {
 function paintChatItems(filter) {
   const el = $("#clist"); if (!el) return;
   let list = S.chats.filter(c => showArchived ? c.archived : !c.archived);
-  if (filter) { const f = filter.toLowerCase(); list = list.filter(c => (c.peer.display_name + " " + c.peer.username).toLowerCase().includes(f)); }
+  if (filter) { const f = filter.toLowerCase(); list = list.filter(c => chatSearchText(c).toLowerCase().includes(f)); }
   if (!list.length) {
     el.innerHTML = '<div class="empty"><div class="big">💬</div><h3>' + t("empty_chats") + "</h3><p>" + t("empty_chats_hint") + "</p></div>";
     return;
   }
   el.innerHTML = list.map(c => {
-    const last = c.last ? lastPreview(c.last) : "";
+    const grp = isGroup(c);
+    const last = c.last ? lastPreview(c.last, c) : "";
     const tm = c.last ? chatTime(c.last.created_at) : "";
+    const av = grp ? '<div class="av" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer);
+    const nm = grp ? esc(c.group.title) : esc(c.peer.display_name);
+    const sub = grp ? ' <span class="tag">👥' + c.group.members + "</span>" : "";
     return '<button class="ci' + (S.curChat === c.id ? " on" : "") + '" data-chat="' + c.id + '" role="listitem">' +
-      avatarHTML(c.peer) +
-      '<span class="tx"><span class="nm">' + esc(c.peer.display_name) + (c.pinned ? ' <span class="tag">📌</span>' : "") + (c.muted ? ' <span class="tag">🔇</span>' : "") + "</span>" +
+      av +
+      '<span class="tx"><span class="nm">' + nm + sub + (c.pinned ? ' <span class="tag">📌</span>' : "") + (c.muted ? ' <span class="tag">🔇</span>' : "") + "</span>" +
       '<span class="lm">' + last + "</span></span>" +
       '<span class="mt"><span class="tm">' + tm + "</span>" + (c.unread ? '<span class="unread">' + (c.unread > 99 ? "99+" : c.unread) + "</span>" : "") + "</span></button>";
   }).join("");
@@ -58,10 +67,15 @@ function paintChatItems(filter) {
     b.oncontextmenu = e => { e.preventDefault(); chatCtx(e.clientX, e.clientY, +b.dataset.chat); };
   });
 }
-function lastPreview(m) {
+function chatSearchText(c) {
+  if (isGroup(c)) return c.group.title;
+  return c.peer.display_name + " " + c.peer.username;
+}
+function lastPreview(m, chat) {
   if (!m || m.deleted_all) return "🚫 " + t("deleted_msg");
   let p = "";
   if (m.sender_id === (S.me && S.me.id)) p = (m.read ? "✓✓ " : (m.delivered ? "✓✓ " : "✓ ")) ;
+  else if (chat && isGroup(chat) && chat.last_sender) p = esc(chat.last_sender) + ": ";
   if (m.type === "image") return p + "🖼 " + t("photo");
   if (m.type === "video") return p + "🎬 " + t("video");
   if (m.type === "audio" || m.type === "voice") return p + "🎤 " + t("voice_msg");
@@ -95,18 +109,22 @@ async function renderChatWrap() {
 async function openChat(id, around) {
   S.curChat = id; S.replyTo = null; S.editId = null; msgById = {}; jumpCount = 0; nearBottom = true;
   const c = chatById(id);
+  const grp = isGroup(c);
+  S.gmembers = []; S.gmemberChat = grp ? id : 0; S.gname = {};
   paintChatItems(paneQ());
   const m = $("#main");
+  const headAv = grp ? '<div class="av" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer);
+  const headNm = grp ? esc(c.group.title) : esc(c.peer.display_name);
   m.innerHTML =
     '<div class="chat-head"><button class="icon-btn back-btn" id="ch-back" aria-label="' + t("back") + '">←</button>' +
-    '<span id="ch-av">' + avatarHTML(c.peer) + '</span><div class="tx" id="ch-tx"><div class="nm">' + esc(c.peer.display_name) + '</div><div class="st" id="ch-st"></div></div>' +
+    '<span id="ch-av">' + headAv + '</span><div class="tx" id="ch-tx"><div class="nm">' + headNm + '</div><div class="st" id="ch-st"></div></div>' +
     '<button class="icon-btn" id="ch-menu" aria-label="' + t("menu") + '">⋮</button></div>' +
     '<div class="pins-bar" id="pins-bar" style="display:none"></div>' +
     '<div class="msgs" id="msgs" tabindex="0" aria-label="messages"><div class="spinner"></div></div>' +
     '<button class="jump" id="jump" aria-label="' + t("jump_down") + '">↓</button>' +
     '<div id="rp-wrap"></div><div class="composer" id="composer"></div>';
   $("#ch-back").onclick = () => { location.hash = "#/chats"; };
-  $("#ch-tx").onclick = () => { location.hash = "#/profile/" + c.peer.username; };
+  $("#ch-tx").onclick = () => { if (grp) groupInfoDlg(c); else location.hash = "#/profile/" + c.peer.username; };
   $("#ch-menu").onclick = e => chatCtx(e.clientX, e.clientY, id);
   $("#jump").onclick = () => { const box = $("#msgs"); box.scrollTop = box.scrollHeight; jumpCount = 0; $("#jump").classList.remove("show"); markRead(); };
   paintHeadStatus(); paintComposer(); paintReplyBar();
@@ -116,12 +134,38 @@ async function openChat(id, around) {
     $("#jump").classList.toggle("show", !nearBottom && jumpCount > 0);
     if (box.scrollTop < 60 && S.older && !S.loadingMsgs && S.msgs.length) loadOlder();
   });
+  if (grp) loadChatMembers(id);
   await loadMsgs(id, around, true);
   renderTyping();
+}
+async function loadChatMembers(id) {
+  try {
+    const r = await GET("/api/chats/" + id + "/members");
+    if (!r.data.ok) return;
+    if (S.gmemberChat !== id) return;
+    S.gmembers = r.data.members || [];
+    S.gname = {};
+    S.gmembers.forEach(x => S.gname[x.id] = x.display_name);
+    const c = chatById(id);
+    if (c && isGroup(c)) { c.group.members = S.gmembers.length; c.group.online = S.gmembers.filter(x => x.online).length; c.group.my_role = r.data.my_role; paintChatItems(paneQ()); }
+    paintHeadStatus();
+    if (S.curChat === id && S.msgs.length) renderMsgs();
+  } catch (e) {}
+}
+function groupStatusTx(c) {
+  const n = (c.group && c.group.members) || S.gmembers.length || 0;
+  const on = (c.group && c.group.online) || S.gmembers.filter(x => x.online).length;
+  return n + " " + t("member_one") + (on ? " · " + on + " " + t("online") : "");
 }
 function paintHeadStatus() {
   const c = chatById(S.curChat); if (!c) return;
   const st = $("#ch-st"); if (!st) return;
+  if (isGroup(c)) {
+    const ty = S.typingMap[S.curChat];
+    if (ty && Date.now() - ty.at < 4000) { st.textContent = (ty.name || S.gname[ty.uid] || "") + " " + t("typing"); st.className = "st typ"; return; }
+    st.textContent = groupStatusTx(c); st.className = "st";
+    return;
+  }
   const ty = S.typingMap[S.curChat];
   if (ty && Date.now() - ty.at < 4000) { st.textContent = t("typing"); st.className = "st typ"; return; }
   const on = S.onlineMap[c.peer.id];
@@ -132,9 +176,10 @@ function paintHeadStatus() {
 function renderTyping() { paintHeadStatus(); }
 function paintPresence(uid, online) {
   S.onlineMap[uid] = online;
-  S.chats.forEach(c => { if (c.peer.id === uid) c.peer.online = online; });
+  S.chats.forEach(c => { if (c.peer && c.peer.id === uid) c.peer.online = online; });
+  if (S.gmemberChat) { const gm = S.gmembers.find(x => x.id === uid); if (gm) { gm.online = online; const gc = chatById(S.gmemberChat); if (gc && isGroup(gc)) { gc.group.online = S.gmembers.filter(x => x.online).length; } if ($("#clist")) paintChatItems(paneQ()); if (S.curChat === S.gmemberChat) paintHeadStatus(); return; } }
   if ($("#clist")) paintChatItems(paneQ());
-  if (S.curChat) { const c = chatById(S.curChat); if (c && c.peer.id === uid) paintHeadStatus(); }
+  if (S.curChat) { const c = chatById(S.curChat); if (c && c.peer && c.peer.id === uid) paintHeadStatus(); }
 }
 async function loadMsgs(id, around, first) {
   S.loadingMsgs = true;
@@ -193,13 +238,25 @@ function renderMsgs() {
   if (stick) box.scrollTop = box.scrollHeight;
   bindAudio(box);
 }
+function replyName(sid) {
+  if (sid === (S.me && S.me.id)) return S.me.display_name;
+  if (S.gname[sid]) return S.gname[sid];
+  const c = chatById(S.curChat);
+  return (c && c.peer && c.peer.display_name) || "";
+}
+function senderLine(m, grp) {
+  if (!grp || m.sender_id === (S.me && S.me.id)) return "";
+  const nm = S.gname[m.sender_id] || replyName(m.sender_id) || "…";
+  return '<div class="sender-name" style="color:' + nameColor(nm) + '">' + esc(nm) + "</div>";
+}
 function msgHTML(m) {
   if (m.deleted_all) return '<div class="msg peer deleted" data-mid="' + m.id + '"><div class="bub">🚫 ' + t("deleted_msg") + '<span class="meta">' + timeHM(m.created_at) + "</span></div></div>";
   const me = m.sender_id === (S.me && S.me.id);
-  let inner = "";
+  const grp = isGroup(chatById(S.curChat));
+  let inner = senderLine(m, grp);
   if (m.reply_to && msgById[m.reply_to]) {
     const rp = msgById[m.reply_to];
-    const nm = rp.sender_id === (S.me && S.me.id) ? (S.me.display_name) : ((chatById(S.curChat) || {}).peer || {}).display_name || "";
+    const nm = replyName(rp.sender_id);
     inner += '<div class="reply-box" data-goto="' + rp.id + '"><b>' + esc(nm) + "</b>" + esc((rp.text || "📎").slice(0, 80)) + "</div>";
   }
   if ((m.text || "").includes("\n↪ fwd")) inner += '<div class="fwd-mark">↪ ' + t("fwd_mark") + "</div>";
@@ -260,10 +317,25 @@ function bindAudio(root) {
 function bindMsgs(box) {
   $$(".msg", box).forEach(el => {
     el.oncontextmenu = e => { e.preventDefault(); msgCtx(e.clientX, e.clientY, +el.dataset.mid); };
-    let lp = null;
-    el.addEventListener("touchstart", () => { lp = setTimeout(() => { const r = el.getBoundingClientRect(); msgCtx(r.left + 40, r.top + 20, +el.dataset.mid); }, 550); }, { passive: true });
+    el.ondblclick = () => heartMsg(el, +el.dataset.mid);
+    let lp = null, lastTap = 0;
+    el.addEventListener("touchstart", () => {
+      lp = setTimeout(() => { const r = el.getBoundingClientRect(); msgCtx(r.left + 40, r.top + 20, +el.dataset.mid); }, 550);
+      const n = Date.now();
+      if (n - lastTap < 320) { clearTimeout(lp); heartMsg(el, +el.dataset.mid); lastTap = 0; }
+      else lastTap = n;
+    }, { passive: true });
     el.addEventListener("touchend", () => clearTimeout(lp));
   });
+}
+function heartMsg(el, mid) {
+  if (typeof mid !== "number" || !msgById[mid] || msgById[mid].deleted_all) return;
+  const bub = el.querySelector(".bub"); if (!bub || bub.querySelector(".heart-pop")) return;
+  const h = document.createElement("div");
+  h.className = "heart-pop"; h.textContent = "❤️";
+  bub.appendChild(h);
+  setTimeout(() => h.remove(), 900);
+  reactMsg(mid, "❤️");
 }
 function paintPins() {
   const bar = $("#pins-bar"); if (!bar) return;
@@ -576,7 +648,12 @@ async function delMsg(mid, scope) {
 function forwardDlg(mid) {
   const avail = S.chats.filter(c => !c.archived);
   if (!avail.length) { toast(t("no_chats_yet"), true); return; }
-  const ov = modal("<h3>" + t("fwd_to") + "</h3>" + avail.map(c => '<button class="ci" data-fc="' + c.id + '">' + avatarHTML(c.peer, "sm") + '<span class="tx"><span class="nm">' + esc(c.peer.display_name) + "</span></span></button>").join(""));
+  const ov = modal("<h3>" + t("fwd_to") + "</h3>" + avail.map(c => {
+    const g = isGroup(c);
+    const av = g ? '<div class="av sm" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer, "sm");
+    const nm = g ? esc(c.group.title) : esc(c.peer.display_name);
+    return '<button class="ci" data-fc="' + c.id + '">' + av + '<span class="tx"><span class="nm">' + nm + "</span></span></button>";
+  }).join(""));
   ov.addEventListener("click", async e => {
     const b = e.target.closest("[data-fc]"); if (!b) return;
     closeModal();
@@ -586,16 +663,34 @@ function forwardDlg(mid) {
 }
 function chatCtx(x, y, id) {
   const c = chatById(id); if (!c) return;
+  const grp = isGroup(c);
   const items = [
     { icon: c.pinned ? "📌" : "📍", label: c.pinned ? t("unpin_chat") : t("pin_chat"), fn: () => chatMeta(id, { pinned: !c.pinned }) },
     { icon: c.muted ? "🔔" : "🔇", label: c.muted ? t("unmute") : t("mute"), fn: () => chatMeta(id, { muted: !c.muted }) },
     { icon: "📦", label: c.archived ? t("unarchive") : t("archive"), fn: () => chatMeta(id, { archived: !c.archived }) },
     { icon: "✓✓", label: c.unread ? t("mark_read") : t("mark_unread"), fn: () => { if (c.unread) markReadChat(id); else markUnreadChat(id); } },
-    { icon: "👤", label: t("view_profile"), fn: () => { location.hash = "#/profile/" + c.peer.username; } },
-    { sep: true },
-    { icon: "🗑️", label: t("delete_chat"), danger: true, fn: async () => { if (await confirmDlg(t("confirm_delete"), t("delete"), true)) chatMeta(id, { deleted: true }); } },
   ];
+  if (grp) {
+    items.push({ icon: "👥", label: t("group_info"), fn: () => groupInfoDlg(c) });
+    items.push({ sep: true });
+    items.push({ icon: "🚪", label: t("leave_group"), danger: true, fn: () => leaveGroup(c) });
+  } else {
+    items.push({ icon: "👤", label: t("view_profile"), fn: () => { location.hash = "#/profile/" + c.peer.username; } });
+    items.push({ sep: true });
+    items.push({ icon: "🗑️", label: t("delete_chat"), danger: true, fn: async () => { if (await confirmDlg(t("confirm_delete"), t("delete"), true)) chatMeta(id, { deleted: true }); } });
+  }
   ctxMenu(x, y, items);
+}
+async function leaveGroup(c) {
+  if (!await confirmDlg(t("confirm_leave"), t("leave_group"), true)) return;
+  try {
+    const r = await POST("/api/chats/" + c.id + "/leave", {});
+    if (!r.data.ok) throw r;
+    S.chats = S.chats.filter(x => x.id !== c.id);
+    if (S.curChat === c.id) location.hash = "#/chats";
+    else paintPane();
+    toast(t("left_group"));
+  } catch (e) { toast(errMsg(e), true); }
 }
 async function chatMeta(id, patch) {
   try {
@@ -646,6 +741,123 @@ function openGallery(attId) {
 }
 function closeGallery() { $("#gal-root").innerHTML = ""; }
 
+/* ---------- groups ---------- */
+const G_EMOJI = ["👥", "🎮", "⚽", "🎵", "💼", "📚", "🍕", "🚀"];
+const G_COLOR = ["#0ea5e9", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#ec4899"];
+function newGroupDlg() {
+  const contacts = S.chats.filter(c => !isGroup(c) && !c.archived && c.peer);
+  let gE = G_EMOJI[0], gC = G_COLOR[0];
+  const ov = modal("<h3>👥 " + t("new_group") + "</h3>" +
+    '<div class="fld"><label>' + t("group_name") + '</label><input class="inp" id="ng-t" maxlength="60"></div>' +
+    '<div class="fld"><label>🎨</label><div class="emoji-bar" id="ng-e" style="flex-wrap:wrap">' + G_EMOJI.map(e => "<button data-e=\"" + e + "\">" + e + "</button>").join("") + "</div>" +
+    '<div class="emoji-bar" id="ng-c" style="flex-wrap:wrap;margin-top:6px">' + G_COLOR.map(x => '<button data-c="' + x + '"><span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:' + x + '"></span></button>').join("") + "</div></div>" +
+    (contacts.length ? '<div class="fld"><label>' + t("pick_members") + '</label><div id="ng-m" style="max-height:180px;overflow-y:auto">' +
+      contacts.map(c => '<label class="member-row" style="cursor:pointer"><input type="checkbox" value="' + esc(c.peer.username) + '">' + avatarHTML(c.peer, "sm") + "<span><b>" + esc(c.peer.display_name) + '</b><br><small style="color:var(--fg2)" dir="ltr">@' + esc(c.peer.username) + "</small></span></label>").join("") + "</div></div>" : "") +
+    '<div class="macts"><button class="btn ghost" id="ng-x">' + t("cancel") + '</button><button class="btn" id="ng-go">' + t("create_group") + "</button></div>");
+  const paintSel = () => {
+    $$("#ng-e button", ov).forEach(b => b.classList.toggle("sel", b.dataset.e === gE));
+    $$("#ng-c button", ov).forEach(b => b.classList.toggle("sel", b.dataset.c === gC));
+  };
+  ov.addEventListener("click", async e => {
+    const eb = e.target.closest("#ng-e button"); if (eb) { gE = eb.dataset.e; paintSel(); return; }
+    const cb = e.target.closest("#ng-c button"); if (cb) { gC = cb.dataset.c; paintSel(); return; }
+  });
+  paintSel();
+  ov.querySelector("#ng-x").onclick = closeModal;
+  ov.querySelector("#ng-go").onclick = async () => {
+    const title = ov.querySelector("#ng-t").value.trim();
+    if (!title) { toast(t("need_title"), true); return; }
+    const members = $$("#ng-m input:checked", ov).map(x => x.value);
+    try {
+      const r = await POST("/api/chats/group", { title, avatar: gE + "|" + gC, members });
+      if (!r.data.ok) throw r;
+      closeModal(); toast(t("group_created"));
+      await loadChats();
+      location.hash = "#/chat/" + r.data.chat_id;
+    } catch (err) { toast(errMsg(err), true); }
+  };
+}
+async function groupInfoDlg(c) {
+  let info = null;
+  try {
+    const r = await GET("/api/chats/" + c.id + "/members");
+    if (!r.data.ok) throw r;
+    info = r.data;
+  } catch (e) { toast(errMsg(e), true); return; }
+  paint();
+  function paint() {
+    const g = info.group, myRole = info.my_role;
+    const canEdit = myRole === "owner" || myRole === "admin";
+    const rows = info.members.map(x => {
+      const self = x.id === S.me.id;
+      const pill = x.role === "owner" ? '<span class="role-pill owner">' + t("role_owner") + "</span>" : (x.role === "admin" ? '<span class="role-pill admin">' + t("role_admin") + "</span>" : "");
+      let acts = "";
+      if (!self && myRole === "owner" && x.role !== "owner") {
+        acts += '<button class="link" data-act="role" data-u="' + esc(x.username) + '" data-r="' + (x.role === "admin" ? "member" : "admin") + '">' + t(x.role === "admin" ? "remove_admin" : "make_admin") + "</button>";
+        acts += '<button class="link" data-act="transfer" data-u="' + esc(x.username) + '">' + t("transfer_owner") + "</button>";
+        acts += '<button class="link danger" data-act="kick" data-u="' + esc(x.username) + '">' + t("remove_member") + "</button>";
+      } else if (!self && myRole === "admin" && x.role === "member") {
+        acts += '<button class="link danger" data-act="kick" data-u="' + esc(x.username) + '">' + t("remove_member") + "</button>";
+      }
+      return '<div class="member-row" data-pf="' + esc(x.username) + '">' + avatarHTML(x, "sm") +
+        '<span style="flex:1;min-width:0"><b>' + esc(x.display_name) + "</b> " + pill + '<br><small style="color:var(--fg2)" dir="ltr">@' + esc(x.username) + "</small></span>" + acts + "</div>";
+    }).join("");
+    const ov = modal('<div class="row" style="align-items:center;margin-bottom:10px"><div class="av" style="background:' + esc(g.avatar.color) + ";width:52px;height:52px;font-size:26px\">" + esc(g.avatar.emoji) + "</div>" +
+      '<div style="flex:1"><h3 style="margin:0">' + esc(g.title) + "</h3><small style=\"color:var(--fg2)\">" + info.members.length + " " + t("member_one") + "</small></div>" +
+      '<button class="icon-btn" id="gi-x">✕</button></div>' +
+      (canEdit ? '<div class="fld"><label>' + t("edit_group") + '</label><div class="row"><input class="inp" id="gi-t" maxlength="60" value="' + esc(g.title) + '" style="flex:1"><button class="btn sm" id="gi-save">' + t("save") + "</button></div></div>" +
+        '<div class="fld"><label>' + t("add_member") + '</label><div class="row"><input class="inp" id="gi-u" dir="ltr" placeholder="' + t("member_username") + '" style="flex:1"><button class="btn sm" id="gi-add">➕</button></div></div>' : "") +
+      '<div style="max-height:300px;overflow-y:auto">' + rows + "</div>" +
+      '<div class="macts"><button class="btn danger ghost" id="gi-leave">' + t("leave_group") + "</button></div>");
+    ov.querySelector("#gi-x").onclick = closeModal;
+    ov.querySelector("#gi-leave").onclick = () => { closeModal(); leaveGroup(c); };
+    const sv = ov.querySelector("#gi-save");
+    if (sv) sv.onclick = async () => {
+      const title = ov.querySelector("#gi-t").value.trim();
+      if (!title) { toast(t("need_title"), true); return; }
+      try { const r = await PATCH("/api/chats/" + c.id, { title }); if (!r.data.ok) throw r; await loadChats(); groupInfoDlg(chatById(c.id) || c); } catch (e) { toast(errMsg(e), true); }
+    };
+    const ad = ov.querySelector("#gi-add");
+    if (ad) ad.onclick = async () => {
+      const un = ov.querySelector("#gi-u").value.trim().replace(/^@/, "");
+      if (!un) return;
+      try {
+        const r = await POST("/api/chats/" + c.id + "/members", { username: un });
+        if (!r.data.ok) throw r;
+        toast(t("member_added")); await loadChats(); loadChatMembers(c.id);
+        groupInfoDlg(chatById(c.id) || c);
+      } catch (e) { toast(errMsg(e), true); }
+    };
+    ov.addEventListener("click", async e => {
+      const b = e.target.closest("[data-act]");
+      if (b) {
+        e.stopPropagation();
+        const un = b.dataset.u, act = b.dataset.act;
+        try {
+          if (act === "role") {
+            const r = await POST("/api/chats/" + c.id + "/role", { username: un, role: b.dataset.r });
+            if (!r.data.ok) throw r;
+          } else if (act === "transfer") {
+            if (!await confirmDlg(t("confirm_transfer"), t("transfer_owner"), true)) return;
+            const r = await POST("/api/chats/" + c.id + "/role", { username: un, role: "owner" });
+            if (!r.data.ok) throw r;
+          } else if (act === "kick") {
+            if (!await confirmDlg(t("remove_member") + "؟", t("remove_member"), true)) return;
+            const r = await DEL("/api/chats/" + c.id + "/members/" + encodeURIComponent(un));
+            if (!r.data.ok) throw r;
+            toast(t("member_removed"));
+          }
+          await loadChats(); loadChatMembers(c.id);
+          groupInfoDlg(chatById(c.id) || c);
+        } catch (err) { toast(errMsg(err), true); }
+        return;
+      }
+      const pf = e.target.closest("[data-pf]");
+      if (pf && pf.dataset.pf !== S.me.username) { closeModal(); location.hash = "#/profile/" + pf.dataset.pf; }
+    });
+  }
+}
+
 /* ---------- WS handlers ---------- */
 function onWSMsg(m) {
   if (!m) return;
@@ -690,6 +902,7 @@ function onWSMsg(m) {
   const c = chatById(m.chat_id);
   if (c) {
     c.last = m;
+    if (isGroup(c) && m.sender_id !== (S.me && S.me.id) && S.gname[m.sender_id]) c.last_sender = S.gname[m.sender_id];
     if (S.curChat === m.chat_id) {
       S.msgs.push(m);
       const stick = nearBottom;
@@ -705,7 +918,12 @@ function onWSMsg(m) {
   if (m.sender_id !== S.me.id && S.curChat !== m.chat_id) {
     beep();
     const cc = chatById(m.chat_id);
-    if (cc && !cc.muted) browserNotify(cc.peer.display_name, (m.text || "📎").slice(0, 100), () => { location.hash = "#/chat/" + m.chat_id; });
+    if (cc && !cc.muted) {
+      if (isGroup(cc)) {
+        const sn = S.gname[m.sender_id] || "";
+        browserNotify(cc.group.title, (sn ? sn + ": " : "") + (m.text || "📎").slice(0, 100), () => { location.hash = "#/chat/" + m.chat_id; });
+      } else browserNotify(cc.peer.display_name, (m.text || "📎").slice(0, 100), () => { location.hash = "#/chat/" + m.chat_id; });
+    }
   } else if (m.sender_id !== S.me.id && S.curChat === m.chat_id && !nearBottom) beep();
 }
 function onWSNotify(m) {

@@ -236,6 +236,12 @@ function onWS(m) {
     if (m.user) { S.usersCache[m.user.username] = m.user; }
   }
   else if (m.t === "read") { onWSRead(m); }
+  else if (m.t === "chats_changed") {
+    if (typeof loadChats === "function") loadChats().then(() => {
+      if (S.curChat && typeof paintHeadStatus === "function") paintHeadStatus();
+      if (S.gmemberChat && typeof loadChatMembers === "function") loadChatMembers(S.gmemberChat);
+    }).catch(() => {});
+  }
 }
 function onUnauthorized() {
   saveToken(""); S.me = null;

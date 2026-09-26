@@ -172,7 +172,7 @@ VIEWS.search = function () {
       }
       if (r.data.messages.length) {
         h += "<h3 style='margin:12px 0 8px'>💬 " + t("search_msgs") + "</h3>";
-        h += r.data.messages.map(m => '<div class="ni" data-c="' + m.chat_id + '" data-m="' + m.id + '">' + avatarHTML(m.peer, "sm") + '<span class="tx"><b>' + esc((m.sender || {}).display_name || "") + "</b> · " + esc(((m.peer || {}).display_name) || "") + "<br>" + esc(m.text) + '</span><span class="tm">' + chatTime(m.created_at) + "</span></div>").join("");
+        h += r.data.messages.map(m => '<div class="ni" data-c="' + m.chat_id + '" data-m="' + m.id + '">' + avatarHTML(m.peer, "sm") + '<span class="tx"><b>' + esc((m.sender || {}).display_name || "") + "</b> · " + esc(m.chat_title || ((m.peer || {}).display_name) || "") + "<br>" + esc(m.text) + '</span><span class="tm">' + chatTime(m.created_at) + "</span></div>").join("");
       }
       el.innerHTML = h || '<div class="empty"><div class="big">🔍</div><h3>' + t("no_results") + "</h3></div>";
       $$("[data-u]", el).forEach(x => x.onclick = () => location.hash = "#/profile/" + x.dataset.u);
@@ -194,6 +194,7 @@ function paintNotifs() {
   el.innerHTML = S.notifs.map(n => {
     let tx = "";
     if (n.kind === "message") tx = "<b>💬 @" + esc((n.payload || {}).from || "") + "</b><br>" + esc((n.payload || {}).preview || "");
+    else if (n.kind === "group") tx = "<b>👥 " + esc((n.payload || {}).title || t("group")) + "</b><br>" + esc(t("added_to_group") + " — " + ((n.payload || {}).by_name || ("@" + ((n.payload || {}).by || ""))));
     else if (n.kind === "system") tx = "<b>📢 " + t("sys_msg") + "</b><br>" + esc((n.payload || {}).text || "");
     else tx = esc(n.kind);
     return '<div class="ni' + (n.read ? "" : " unread") + '" data-n="' + n.id + '"><span class="tx">' + tx + '</span><span class="tm">' + chatTime(n.created_at) + "</span></div>";

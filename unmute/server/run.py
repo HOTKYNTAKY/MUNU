@@ -200,6 +200,25 @@ class Handler(BaseHTTPRequestHandler):
             return api2.chat_list(self, u)
         if p == "/api/chats/dm" and method == "POST":
             return api2.dm_open(self, u, b)
+        if p == "/api/chats/group" and method == "POST":
+            return api2.group_create(self, u, b)
+        m = re.match(r"^/api/chats/(\d+)/members$", p)
+        if m and method == "GET":
+            return api2.group_info(self, u, int(m.group(1)))
+        if m and method == "POST":
+            return api2.group_add(self, u, int(m.group(1)), b)
+        m = re.match(r"^/api/chats/(\d+)/members/([A-Za-z0-9_]{1,30})$", p)
+        if m and method == "DELETE":
+            return api2.group_remove(self, u, int(m.group(1)), m.group(2))
+        m = re.match(r"^/api/chats/(\d+)/leave$", p)
+        if m and method == "POST":
+            return api2.group_leave(self, u, int(m.group(1)))
+        m = re.match(r"^/api/chats/(\d+)/role$", p)
+        if m and method == "POST":
+            return api2.group_role(self, u, int(m.group(1)), b)
+        m = re.match(r"^/api/chats/(\d+)$", p)
+        if m and method == "PATCH":
+            return api2.group_update(self, u, int(m.group(1)), b)
         m = re.match(r"^/api/chats/(\d+)/messages$", p)
         if m and method == "GET":
             return api.fetch_messages(self, u, int(m.group(1)), q)

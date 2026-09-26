@@ -152,6 +152,7 @@ def patch_settings(handler, u, b):
 
 def delete_account(handler, u):
     exec_sql("DELETE FROM users WHERE id=?", (u["id"],))
+    exec_sql("DELETE FROM chats WHERE id NOT IN (SELECT chat_id FROM chat_members)")
     return handler.j({"ok": True})
 
 
@@ -179,7 +180,7 @@ def profile(handler, u, username):
         return handler.j({"ok": False, "error": "privacy"}, 403)
     pub = user_pub(t, u["id"])
     pub["email"] = None
-    chat = row("SELECT c.id FROM chats c JOIN chat_members m1 ON m1.chat_id=c.id JOIN chat_members m2 ON m2.chat_id=c.id WHERE m1.user_id=? AND m2.user_id=?", (u["id"], t["id"]))
+    chat = row("SELECT c.id FROM chats c JOIN chat_members m1 ON m1.chat_id=c.id JOIN chat_members m2 ON m2.chat_id=c.id WHERE c.type='dm' AND m1.user_id=? AND m2.user_id=?", (u["id"], t["id"]))
     pub["chat_id"] = chat["id"] if chat else None
     return handler.j({"ok": True, "user": pub})
 
@@ -224,26 +225,52 @@ def contacts_list(handler, u):
 
 
 # ---------------- chats ----------------
+def _group_avatar(g):
+    raw = g.get("avatar") or "👥|#0ea5e9"
+    if "|" in raw:
+        em, col = raw.split("|", 1)
+    else:
+        em, col = "👥", "#0ea5e9"
+    return {"emoji": em, "color": col}
+
+
 def chat_list(handler, u):
     me = u["id"]
-    cms = rows("""SELECT cm.*, c.created_at c_created FROM chat_members cm JOIN chats c ON c.id=cm.chat_id
+    hub = getattr(handler, "hub", None)
+    cms = rows("""SELECT cm.*, c.type, c.title, c.avatar g_avatar, c.owner_id, c.created_at c_created
+                  FROM chat_members cm JOIN chats c ON c.id=cm.chat_id
                   WHERE cm.user_id=?""", (me,))
     out = []
     for cm in cms:
-        peer = chat_peer(cm["chat_id"], me)
-        if not peer:
-            continue
+        ctype = cm["type"] or "dm"
         last = row("""SELECT * FROM messages WHERE chat_id=? AND NOT(deleted=1) AND NOT(','||deleted_me||',' LIKE ?)
                       ORDER BY id DESC LIMIT 1""", (cm["chat_id"], "%%,%d,%%" % me))
         unread = row("SELECT COUNT(*) n FROM messages m WHERE m.chat_id=? AND m.sender_id!=? AND m.id>? AND NOT(m.deleted=1)",
                      (cm["chat_id"], me, cm["last_read"]))["n"]
-        out.append({
-            "id": cm["chat_id"], "peer": user_pub(peer, me),
+        item = {
+            "id": cm["chat_id"], "type": ctype,
             "last": msg_json(last, me) if last else None,
-            "unread": unread if not cm["muted"] else unread,
+            "unread": unread,
             "pinned": bool(cm["pinned"]), "archived": bool(cm["archived"]), "muted": bool(cm["muted"]),
             "updated": last["id"] if last else cm["chat_id"],
-        })
+        }
+        if ctype == "group":
+            mems = rows("SELECT user_id FROM chat_members WHERE chat_id=?", (cm["chat_id"],))
+            online_n = sum(1 for x in mems if hub and hub.online_count(x["user_id"]) > 0)
+            item["group"] = {
+                "title": cm["title"] or "👥", "avatar": _group_avatar({"avatar": cm["g_avatar"]}),
+                "members": len(mems), "online": online_n, "owner_id": cm["owner_id"],
+                "my_role": cm["role"] or "member",
+            }
+            if last and last["sender_id"] != me:
+                sn = row("SELECT display_name FROM users WHERE id=?", (last["sender_id"],))
+                item["last_sender"] = sn["display_name"] if sn else ""
+        else:
+            peer = chat_peer(cm["chat_id"], me)
+            if not peer:
+                continue
+            item["peer"] = user_pub(peer, me)
+        out.append(item)
     out.sort(key=lambda x: (x["pinned"], x["updated"]), reverse=True)
     return handler.j({"ok": True, "chats": out})
 
@@ -254,7 +281,7 @@ def dm_open(handler, u, b):
         return handler.j({"ok": False, "error": "notfound"}, 404)
     if t["id"] == u["id"]:
         return handler.j({"ok": False, "error": "self"}, 400)
-    chat = row("SELECT c.id FROM chats c JOIN chat_members m1 ON m1.chat_id=c.id JOIN chat_members m2 ON m2.chat_id=c.id WHERE m1.user_id=? AND m2.user_id=?", (u["id"], t["id"]))
+    chat = row("SELECT c.id FROM chats c JOIN chat_members m1 ON m1.chat_id=c.id JOIN chat_members m2 ON m2.chat_id=c.id WHERE c.type='dm' AND m1.user_id=? AND m2.user_id=?", (u["id"], t["id"]))
     if chat:
         exec_sql("UPDATE chat_members SET deleted_at=0, archived=0 WHERE chat_id=? AND user_id=?", (chat["id"], u["id"]))
         return handler.j({"ok": True, "chat_id": chat["id"]})
@@ -262,6 +289,185 @@ def dm_open(handler, u, b):
     exec_sql("INSERT INTO chat_members(chat_id,user_id) VALUES(?,?)", (cid, u["id"]))
     exec_sql("INSERT INTO chat_members(chat_id,user_id) VALUES(?,?)", (cid, t["id"]))
     return handler.j({"ok": True, "chat_id": cid})
+
+
+# ---------------- groups ----------------
+GROUP_CAP = 200
+AV_RE = r"^.{1,8}#[0-9a-fA-F]{6}$"
+
+
+def _my_role(chat_id, uid):
+    r = row("SELECT role FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, uid))
+    return (r["role"] or "member") if r else None
+
+
+def _get_group(chat_id):
+    g = row("SELECT * FROM chats WHERE id=?", (chat_id,))
+    if not g or (g["type"] or "dm") != "group":
+        return None
+    return g
+
+
+def _chats_changed(handler, uids):
+    hub = getattr(handler, "hub", None)
+    if hub:
+        hub.send_many(uids, {"t": "chats_changed"})
+
+
+def group_create(handler, u, b):
+    title = (b.get("title") or "").strip()[:60]
+    if not title:
+        return handler.j({"ok": False, "error": "title"}, 400)
+    av = b.get("avatar") or "👥|#0ea5e9"
+    if not re.match(AV_RE, av):
+        av = "👥|#0ea5e9"
+    ids = []
+    for n in (b.get("members") or [])[:GROUP_CAP]:
+        t = row("SELECT id, status FROM users WHERE username=?", (str(n or "").strip(),))
+        if t and t["status"] == "active" and t["id"] != u["id"] and t["id"] not in ids:
+            ids.append(t["id"])
+    cid = exec_sql("INSERT INTO chats(type,title,avatar,owner_id,created_at) VALUES('group',?,?,?,?)",
+                   (title, av, u["id"], now_ms()))
+    exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (cid, u["id"], "owner"))
+    for i in ids:
+        exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (cid, i, "member"))
+        notify(i, "group", {"chat_id": cid, "title": title, "by": u["username"], "by_name": u["display_name"]})
+    _chats_changed(handler, ids)
+    return handler.j({"ok": True, "chat_id": cid})
+
+
+def group_info(handler, u, chat_id):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    role = _my_role(chat_id, u["id"])
+    if not role:
+        return handler.j({"ok": False, "error": "not_member"}, 403)
+    hub = getattr(handler, "hub", None)
+    mems = []
+    for m in rows("SELECT user_id, role FROM chat_members WHERE chat_id=?", (chat_id,)):
+        t = user_by_id(m["user_id"])
+        if not t:
+            continue
+        mu = user_pub(t, u["id"])
+        mu["role"] = m["role"] or "member"
+        if hub:
+            mu["online"] = hub.online_count(t["id"]) > 0
+        mems.append(mu)
+    return handler.j({"ok": True, "group": {"id": g["id"], "title": g["title"] or "👥",
+                                            "avatar": _group_avatar(g), "owner_id": g["owner_id"]},
+                      "members": mems, "my_role": role})
+
+
+def group_update(handler, u, chat_id, b):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if _my_role(chat_id, u["id"]) not in ("owner", "admin"):
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    sets, vals = [], []
+    if "title" in b:
+        t = (b["title"] or "").strip()[:60]
+        if not t:
+            return handler.j({"ok": False, "error": "title"}, 400)
+        sets.append("title=?")
+        vals.append(t)
+    if "avatar" in b and re.match(AV_RE, b["avatar"] or ""):
+        sets.append("avatar=?")
+        vals.append(b["avatar"])
+    if not sets:
+        return handler.j({"ok": False, "error": "nothing"}, 400)
+    exec_sql("UPDATE chats SET %s WHERE id=?" % ",".join(sets), vals + [chat_id])
+    _chats_changed(handler, chat_members(chat_id))
+    return handler.j({"ok": True})
+
+
+def group_add(handler, u, chat_id, b):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if _my_role(chat_id, u["id"]) not in ("owner", "admin"):
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    t = row("SELECT * FROM users WHERE username=?", ((b.get("username") or "").strip(),))
+    if not t or t["status"] != "active":
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, t["id"])):
+        return handler.j({"ok": False, "error": "already"}, 409)
+    n = row("SELECT COUNT(*) n FROM chat_members WHERE chat_id=?", (chat_id,))["n"]
+    if n >= GROUP_CAP:
+        return handler.j({"ok": False, "error": "full"}, 400)
+    exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (chat_id, t["id"], "member"))
+    notify(t["id"], "group", {"chat_id": chat_id, "title": g["title"], "by": u["username"], "by_name": u["display_name"]})
+    _chats_changed(handler, [t["id"]] + chat_members(chat_id))
+    return handler.j({"ok": True})
+
+
+def group_remove(handler, u, chat_id, username):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    my = _my_role(chat_id, u["id"])
+    if my not in ("owner", "admin"):
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    t = row("SELECT id FROM users WHERE username=?", (username,))
+    if not t:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    tgt = _my_role(chat_id, t["id"])
+    if not tgt:
+        return handler.j({"ok": False, "error": "not_member"}, 404)
+    if tgt == "owner" or t["id"] == u["id"]:
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    if my == "admin" and tgt == "admin":
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    exec_sql("DELETE FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, t["id"]))
+    _chats_changed(handler, [t["id"]] + chat_members(chat_id))
+    return handler.j({"ok": True})
+
+
+def group_leave(handler, u, chat_id):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    my = _my_role(chat_id, u["id"])
+    if not my:
+        return handler.j({"ok": False, "error": "not_member"}, 403)
+    exec_sql("DELETE FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, u["id"]))
+    rest = rows("SELECT user_id FROM chat_members WHERE chat_id=? ORDER BY rowid", (chat_id,))
+    if not rest:
+        exec_sql("DELETE FROM chats WHERE id=?", (chat_id,))
+    elif my == "owner":
+        new_owner = rest[0]["user_id"]
+        exec_sql("UPDATE chat_members SET role='owner' WHERE chat_id=? AND user_id=?", (chat_id, new_owner))
+        exec_sql("UPDATE chats SET owner_id=? WHERE id=?", (new_owner, chat_id))
+        _chats_changed(handler, [x["user_id"] for x in rest])
+    return handler.j({"ok": True})
+
+
+def group_role(handler, u, chat_id, b):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if _my_role(chat_id, u["id"]) != "owner":
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    t = row("SELECT id FROM users WHERE username=?", ((b.get("username") or "").strip(),))
+    if not t or t["id"] == u["id"]:
+        return handler.j({"ok": False, "error": "bad"}, 400)
+    if not _my_role(chat_id, t["id"]):
+        return handler.j({"ok": False, "error": "not_member"}, 404)
+    role = b.get("role")
+    if role == "owner":
+        # transfer ownership: target becomes owner, self becomes admin
+        exec_sql("UPDATE chat_members SET role='owner' WHERE chat_id=? AND user_id=?", (chat_id, t["id"]))
+        exec_sql("UPDATE chat_members SET role='admin' WHERE chat_id=? AND user_id=?", (chat_id, u["id"]))
+        exec_sql("UPDATE chats SET owner_id=? WHERE id=?", (t["id"], chat_id))
+    elif role in ("admin", "member"):
+        if _my_role(chat_id, t["id"]) == "owner":
+            return handler.j({"ok": False, "error": "forbidden"}, 403)
+        exec_sql("UPDATE chat_members SET role=? WHERE chat_id=? AND user_id=?", (role, chat_id, t["id"]))
+    else:
+        return handler.j({"ok": False, "error": "bad"}, 400)
+    _chats_changed(handler, chat_members(chat_id))
+    return handler.j({"ok": True})
 
 
 def chat_meta(handler, u, chat_id, b):
@@ -529,9 +735,12 @@ def search_all(handler, u, q):
     out_msgs = []
     for m in ms:
         peer = chat_peer(m["chat_id"], u["id"])
+        gchat = row("SELECT type, title FROM chats WHERE id=?", (m["chat_id"],))
         out_msgs.append({"id": m["id"], "chat_id": m["chat_id"], "text": m["text"][:160],
                          "sender": user_pub(user_by_id(m["sender_id"]), u["id"]) if user_by_id(m["sender_id"]) else None,
-                         "peer": user_pub(peer, u["id"]) if peer else None, "created_at": m["created_at"]})
+                         "peer": user_pub(peer, u["id"]) if peer else None,
+                         "chat_title": (gchat["title"] if gchat and (gchat["type"] or "dm") == "group" else None),
+                         "created_at": m["created_at"]})
     return handler.j({"ok": True, "users": [user_pub(x, u["id"]) for x in us], "messages": out_msgs})
 
 

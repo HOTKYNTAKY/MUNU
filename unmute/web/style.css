@@ -77,6 +77,15 @@ a{color:var(--accent)}
 .av .on{position:absolute;bottom:0;inset-inline-end:0;width:13px;height:13px;border-radius:50%;background:var(--ok);border:2.5px solid var(--bg2)}
 .av img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
 .att-expired{font-size:12.5px;opacity:.75;font-style:italic;padding:6px 2px}
+.sender-name{font-size:12px;font-weight:700;margin-bottom:2px;cursor:pointer}
+.heart-pop{position:absolute;inset:0;display:grid;place-items:center;font-size:44px;pointer-events:none;animation:hpop .8s ease forwards}
+@keyframes hpop{0%{opacity:0;transform:scale(.3)}25%{opacity:1;transform:scale(1.25)}55%{transform:scale(1)}100%{opacity:0;transform:scale(1.1) translateY(-14px)}}
+.bub{overflow:visible}
+.member-row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.member-row:last-child{border:0}
+.role-pill{font-size:10.5px;padding:2px 9px;border-radius:10px;background:var(--bg4);color:var(--fg2)}
+.role-pill.owner{background:rgba(245,158,11,.2);color:var(--warn)}
+.role-pill.admin{background:var(--accent-soft);color:var(--accent)}
 .tag{font-size:10px;color:var(--fg3)}
 .sec-title{padding:10px 14px 4px;color:var(--fg3);font-size:12px;font-weight:700}
 
@@ -164,6 +173,7 @@ textarea.inp{resize:vertical;min-height:70px}
 .btn.sm{padding:7px 13px;font-size:13px;border-radius:10px}
 .btn.block{width:100%}
 .link{background:none;border:0;color:var(--accent);font-size:13.5px}
+.link.danger{color:var(--danger)}
 .frm-err{background:rgba(239,68,68,.1);border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px}
 .frm-ok{background:rgba(34,197,94,.1);border:1px solid var(--ok);color:var(--ok);border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px}
 .hint{font-size:12.5px;color:var(--fg3);margin-top:6px}
@@ -225,6 +235,7 @@ textarea.inp{resize:vertical;min-height:70px}
 .emoji-bar{display:flex;gap:2px;padding:4px 8px}
 .emoji-bar button{font-size:20px;padding:6px 8px;width:auto}
 .emoji-bar button:hover{background:var(--bg3)}
+.emoji-bar button.sel{background:var(--accent-soft);outline:2px solid var(--accent);border-radius:10px}
 
 /* gallery */
 .gallery{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:120;display:flex;flex-direction:column}

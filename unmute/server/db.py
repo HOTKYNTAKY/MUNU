@@ -45,11 +45,14 @@ CREATE TABLE IF NOT EXISTS sessions(
   remember INTEGER NOT NULL DEFAULT 0, ua TEXT, ip TEXT
 );
 CREATE TABLE IF NOT EXISTS chats(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL DEFAULT 'dm', created_at INTEGER NOT NULL
+  id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL DEFAULT 'dm',
+  title TEXT, avatar TEXT NOT NULL DEFAULT '👥|#0ea5e9', owner_id INTEGER,
+  created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS chat_members(
   chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
   pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
   muted INTEGER NOT NULL DEFAULT 0, deleted_at INTEGER NOT NULL DEFAULT 0,
   last_read INTEGER NOT NULL DEFAULT 0,
@@ -136,6 +139,16 @@ def init():
     ucols = [r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()]
     if "avatar_img" not in ucols:
         c.execute("ALTER TABLE users ADD COLUMN avatar_img INTEGER")
+    ccols = [r[1] for r in c.execute("PRAGMA table_info(chats)").fetchall()]
+    if "title" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN title TEXT")
+    if "avatar" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN avatar TEXT NOT NULL DEFAULT '👥|#0ea5e9'")
+    if "owner_id" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN owner_id INTEGER")
+    mcols = [r[1] for r in c.execute("PRAGMA table_info(chat_members)").fetchall()]
+    if "role" not in mcols:
+        c.execute("ALTER TABLE chat_members ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
     import time as _t
     # existing media counts from now (expires TTL after update)
     c.execute("UPDATE attachments SET created_at=? WHERE created_at=0", (int(_t.time() * 1000),))
