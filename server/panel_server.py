@@ -52,6 +52,8 @@ def admin_name():
     if a and a in USERS: return a
     for n, u in USERS.items():
         if u.get("role") == "admin": return n
+    if USERS:
+        return min(USERS.items(), key=lambda kv: kv[1].get("c", 0))[0]
     return None
 
 def is_admin(u):
