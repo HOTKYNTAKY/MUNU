@@ -125,6 +125,12 @@
   .theirs{align-self:flex-start;background:#1a212c;border:1px solid var(--line);}
   .thread-empty{color:var(--mut);font-size:12px;text-align:center;padding:18px 0;}
 
+  .u-row{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px dashed var(--line);font-size:12px;color:var(--mut);}
+  .u-row b{color:var(--tx);font-size:12px;}
+  .u-act{margin-right:auto;display:flex;gap:6px;}
+  .mini-btn{border:1px solid var(--line);background:#1a212c;color:var(--tx);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;}
+  .mini-btn.red{color:var(--red);border-color:rgba(239,68,68,.4);}
+
   /* ---------- ناوبری پایین ---------- */
   .bnav{
     position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
@@ -158,7 +164,7 @@
 
 <div class="auth" id="auth">
   <div class="auth-card">
-    <img class="flag" src="assets/flag.png" alt="گارد جاویدان">
+    <img class="flag" id="flag-auth" src="assets/flag.png" alt="گارد جاویدان" style="cursor:pointer;">
     <h1>گارد جاویدان</h1>
     <p>پنل امن ارسال یک‌طرفه + پیام‌رسان دوطرفه</p>
     <div class="tabs">
@@ -184,7 +190,7 @@
 <div class="app hidden" id="app">
   <header>
     <div class="brand">
-      <img class="flag-mini" src="assets/flag.png" alt="">
+      <img class="flag-mini" id="flag-head" src="assets/flag.png" alt="" style="cursor:pointer;">
       <div>
         <b>گارد جاویدان</b>
         <small id="user-info"></small>
@@ -275,6 +281,14 @@
     </section>
   </div>
 
+  <!-- ---------- مدیریت فرمانده ---------- -->
+  <section id="admin-view" class="hidden">
+    <div class="log" style="margin-top:0;">
+      <div class="log-head"><b>★ مدیریت کاربران</b></div>
+      <div id="u-list"></div>
+    </div>
+  </section>
+
   <!-- ---------- پیام‌رسان ---------- -->
   <section id="msg-view" class="hidden">
     <div class="log" style="margin-top:0;">
@@ -296,6 +310,7 @@
 <nav class="bnav hidden" id="bnav">
   <button class="bnav-btn active" id="nav-panel">🛡️ پنل</button>
   <button class="bnav-btn" id="nav-msg">✉️ پیام‌رسان<span class="badge hidden" id="unread"></span></button>
+  <button class="bnav-btn hidden" id="nav-admin">★ مدیریت</button>
 </nav>
 
 <input type="file" id="f-photo" accept="image/*" hidden>
@@ -335,6 +350,18 @@
       <button class="btn btn-send" id="pass-save">ذخیره</button>
       <button class="btn btn-dim" id="pass-close">انصراف</button>
     </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="master-modal">
+  <div class="modal-card">
+    <h3>★ دسترسی فرمانده</h3>
+    <input class="text-in" id="master-pass" type="password" placeholder="گذرواژه فرمانده">
+    <div class="row">
+      <button class="btn btn-send" id="master-go">ورود</button>
+      <button class="btn btn-dim" id="master-close">انصراف</button>
+    </div>
+    <p class="err" id="master-err"></p>
   </div>
 </div>
 
@@ -510,21 +537,27 @@ async function pollMsgs(){
     }
   }catch(e){}
 }
-$("#nav-panel").addEventListener("click", ()=>{
-  msgViewOpen=false;
-  $("#nav-panel").classList.add("active"); $("#nav-msg").classList.remove("active");
-  $("#panel-view").classList.remove("hidden"); $("#msg-view").classList.add("hidden");
-});
-$("#nav-msg").addEventListener("click", async ()=>{
-  msgViewOpen=true;
-  $("#nav-msg").classList.add("active"); $("#nav-panel").classList.remove("active");
-  $("#panel-view").classList.add("hidden"); $("#msg-view").classList.remove("hidden");
+async function initMsg(){
   if(ROLE==="admin"){ if(!currentPeer) currentPeer="*"; await loadPeers(); $("#msg-title").textContent="صندوق فرمانده"; }
-  else { currentPeer=ADMIN_NAME; $("#msg-title").textContent="ارتباط با فرمانده ("+ADMIN_NAME+")"; }
+  else { currentPeer=ADMIN_NAME; $("#msg-title").textContent="ارتباط با فرمانده"+(ADMIN_NAME? " ("+ADMIN_NAME+")":""); }
   await pollMsgs();
   await api("/api/markread");
   renderThread();
-});
+}
+function showView(v){
+  msgViewOpen=(v==="msg");
+  $("#panel-view").classList.toggle("hidden", v!=="panel");
+  $("#msg-view").classList.toggle("hidden", v!=="msg");
+  $("#admin-view").classList.toggle("hidden", v!=="admin");
+  $("#nav-panel").classList.toggle("active", v==="panel");
+  $("#nav-msg").classList.toggle("active", v==="msg");
+  $("#nav-admin").classList.toggle("active", v==="admin");
+  if(v==="msg") initMsg();
+  if(v==="admin") loadAdmin();
+}
+$("#nav-panel").addEventListener("click", ()=>showView("panel"));
+$("#nav-msg").addEventListener("click", ()=>showView("msg"));
+$("#nav-admin").addEventListener("click", ()=>showView("admin"));
 $("#m-send").addEventListener("click", async ()=>{
   const v=$("#m-text").value.trim();
   if(!v){ toast("متنی بنویسید", false); return; }
@@ -562,7 +595,8 @@ async function start(name, role, adminName){
   $("#auth").classList.add("hidden");
   $("#app").classList.remove("hidden");
   $("#bnav").classList.remove("hidden");
-  $("#user-info").textContent="👤 "+name+(ROLE==="admin"? " ★ فرمانده":"");
+  $("#user-info").textContent = name==="__master__" ? "★ فرمانده" : "👤 "+name+(ROLE==="admin"? " ★ فرمانده":"");
+  if(ROLE==="admin") $("#nav-admin").classList.remove("hidden"); else $("#nav-admin").classList.add("hidden");
   if("Notification" in window && Notification.permission==="granted") $("#notify-btn").classList.add("hidden");
   loadLog();
   pollMsgs();
@@ -609,6 +643,7 @@ $("#logout").addEventListener("click", async ()=>{
   USER=null; LOGARR=[]; ALLMSGS=[]; lastMsgId=0; msgViewOpen=false;
   clearInterval(pollT); pollT=null;
   $("#bnav").classList.add("hidden");
+  $("#nav-admin").classList.add("hidden");
   $("#app").classList.add("hidden");
   $("#auth").classList.remove("hidden");
   drawChips();
@@ -774,6 +809,63 @@ $("#clear-log").addEventListener("click", async ()=>{
   try{ await api("/api/logclear"); }catch(e){}
   toast("تاریخچه پاک شد");
 });
+
+/* ---------- دسترسی مخفی فرمانده (۳ ضربه روی پرچم) ---------- */
+let taps=[];
+function flagTap(){
+  const n=Date.now();
+  taps=taps.filter(t=>n-t<2000);
+  taps.push(n);
+  if(taps.length>=3){
+    taps=[];
+    $("#master-pass").value=""; $("#master-err").textContent="";
+    $("#master-modal").classList.remove("hidden");
+    setTimeout(()=>$("#master-pass").focus(),50);
+  }
+}
+["flag-auth","flag-head"].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.addEventListener("click", flagTap);
+});
+$("#master-close").addEventListener("click", ()=>$("#master-modal").classList.add("hidden"));
+$("#master-go").addEventListener("click", async ()=>{
+  try{
+    const j=await api("/api/master",{pass:$("#master-pass").value});
+    if(j.ok){
+      TOKEN=j.token; localStorage.setItem("gj_token",TOKEN);
+      $("#master-modal").classList.add("hidden");
+      const me=await apiGet("/api/me");
+      start(me.user, "admin", me.admin);
+      showView("admin");
+    } else $("#master-err").textContent="گذرواژه اشتباه است";
+  }catch(e){ $("#master-err").textContent="اتصال به سرور ممکن نیست"; }
+});
+$("#master-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#master-go").click(); });
+
+/* ---------- نمای مدیریت ---------- */
+async function loadAdmin(){
+  try{
+    const j=await apiGet("/api/users");
+    if(!j.ok) return;
+    $("#u-list").innerHTML=j.users.map(x=>{
+      const last=x.last? new Date(x.last).toLocaleString("fa-IR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "—";
+      return `<div class="u-row"><b>${x.role==="admin"?"★ ":""}👤 ${x.name}</b><span>آخرین: ${last}</span>
+        <span class="u-act">
+          <button class="mini-btn" data-chat="${x.name}">💬 پیام</button>
+          <button class="mini-btn red" data-del="${x.name}">حذف</button>
+        </span></div>`;
+    }).join("") || `<div class="log-empty">هنوز کاربری ثبت نشده.</div>`;
+    $("#u-list").querySelectorAll("[data-chat]").forEach(b=>b.onclick=async ()=>{
+      currentPeer=b.dataset.chat;
+      showView("msg");
+    });
+    $("#u-list").querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
+      if(!confirm("کاربر "+b.dataset.del+" حذف شود؟")) return;
+      const r=await api("/api/deluser",{user:b.dataset.del});
+      if(r.ok){ toast("حذف شد"); loadAdmin(); } else toast("حذف نشد", false);
+    });
+  }catch(e){}
+}
 
 /* ---------- شروع ---------- */
 (async ()=>{

