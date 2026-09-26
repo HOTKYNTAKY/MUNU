@@ -15,7 +15,7 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 DEV = os.environ.get("UM_DEV", "0") == "1"
 HUB = None  # injected by run.py
 
-_rl_auth = util.RateLimiter(10, 60)
+_rl_auth = util.RateLimiter(40, 60)
 _rl_api = util.RateLimiter(240, 60)
 _rl_up = util.RateLimiter(30, 60)
 _dev_inbox = []

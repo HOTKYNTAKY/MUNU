@@ -7,6 +7,7 @@ import db
 import util
 from util import now_ms
 from api import (row, rows, exec_sql, user_by_id, settings_of, is_contact, has_blocked,
+                 priv_allow,
                  user_pub, att_json, msg_json, chat_members, chat_peer, notify, push_msg,
                  make_session, MEDIA_DIR, _dev_inbox, _lock, DEV)
 
@@ -218,7 +219,7 @@ def chat_list(handler, u):
         if not peer:
             continue
         last = row("""SELECT * FROM messages WHERE chat_id=? AND NOT(deleted=1) AND NOT(','||deleted_me||',' LIKE ?)
-                      ORDER BY id DESC LIMIT 1""", (cm["chat_id"], "%,%d,%" % me))
+                      ORDER BY id DESC LIMIT 1""", (cm["chat_id"], "%%,%d,%%" % me))
         unread = row("SELECT COUNT(*) n FROM messages m WHERE m.chat_id=? AND m.sender_id!=? AND m.id>? AND NOT(m.deleted=1)",
                      (cm["chat_id"], me, cm["last_read"]))["n"]
         out.append({
@@ -447,11 +448,11 @@ def search_all(handler, u, q):
         return handler.j({"ok": True, "users": [], "messages": []})
     like = "%" + term + "%"
     us = rows("SELECT * FROM users WHERE status='active' AND (username LIKE ? OR display_name LIKE ?) AND id!=? LIMIT 15", (like, like, u["id"]))
-    ms = rows("""SELECT m.*, c.id cid FROM messages m
+    ms = rows("""SELECT m.* FROM messages m
                  JOIN chat_members cm ON cm.chat_id=m.chat_id
-                 LEFT JOIN chats c ON c.id=m.chat_id
-                 WHERE cm.user_id=? AND m.deleted=0 AND m.text LIKE ? AND m.sender_id!=?
-                 ORDER BY m.id DESC LIMIT 30""", (u["id"], like, u["id"]))
+                 WHERE cm.user_id=? AND m.deleted=0 AND m.text LIKE ?
+                   AND NOT(','||m.deleted_me||',' LIKE ?)
+                 ORDER BY m.id DESC LIMIT 30""", (u["id"], like, "%%,%d,%%" % u["id"]))
     out_msgs = []
     for m in ms:
         peer = chat_peer(m["chat_id"], u["id"])

@@ -197,7 +197,7 @@ class Handler(BaseHTTPRequestHandler):
             return api2.contacts_list(self, u)
 
         if p == "/api/chats" and method == "GET":
-            return api.chat_list(self, u)
+            return api2.chat_list(self, u)
         if p == "/api/chats/dm" and method == "POST":
             return api2.dm_open(self, u, b)
         m = re.match(r"^/api/chats/(\d+)/messages$", p)
