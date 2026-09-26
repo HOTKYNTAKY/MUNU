@@ -196,6 +196,7 @@ function paintNotifs() {
     if (n.kind === "message") tx = "<b>💬 @" + esc((n.payload || {}).from || "") + "</b><br>" + esc((n.payload || {}).preview || "");
     else if (n.kind === "group") tx = "<b>👥 " + esc((n.payload || {}).title || t("group")) + "</b><br>" + esc(t("added_to_group") + " — " + ((n.payload || {}).by_name || ("@" + ((n.payload || {}).by || ""))));
     else if (n.kind === "system") tx = "<b>📢 " + t("sys_msg") + "</b><br>" + esc((n.payload || {}).text || "");
+    else if (n.kind === "mention") { const p = n.payload || {}; tx = "<b>@" + esc(p.by || "") + "</b> \u00B7 " + esc(p.title || t("group")) + "<br>" + esc((p.by_name || "") + " " + t("mentioned_you") + ": " + (p.text || "")); }
     else tx = esc(n.kind);
     return '<div class="ni' + (n.read ? "" : " unread") + '" data-n="' + n.id + '"><span class="tx">' + tx + '</span><span class="tm">' + chatTime(n.created_at) + "</span></div>";
   }).join("");
@@ -204,6 +205,31 @@ function paintNotifs() {
     if (n && (n.payload || {}).chat_id) location.hash = "#/chat/" + n.payload.chat_id;
   });
 }
+
+/* ---------- join via invite ---------- */
+VIEWS.join = async function () {
+  const tok = S.route.arg;
+  const v = mainView("<div class='spinner'></div>");
+  let r;
+  try { r = await GET("/api/join/" + encodeURIComponent(tok)); if (!r.data.ok) throw r; }
+  catch (e) { v.innerHTML = '<div class="empty"><div class="big">🔗</div><h3>' + t("bad_invite") + "</h3></div>"; return; }
+  const g = r.data.group;
+  if (r.data.is_member) { await loadChats(); location.hash = "#/chat/" + g.id; return; }
+  v.innerHTML = '<div class="card" style="max-width:420px;margin:30px auto;text-align:center">' +
+    '<div style="display:flex;justify-content:center;margin-bottom:10px">' + avatarHTML({ avatar: g.avatar }) + "</div>" +
+    "<h2>" + esc(g.title) + "</h2>" +
+    '<p style="color:var(--fg2)">' + g.members + " " + t("member_one") + "</p>" +
+    (g.about ? "<p>" + esc(g.about) + "</p>" : "") +
+    '<button class="btn" id="jn-go">' + t("join") + "</button></div>";
+  $("#jn-go", v).onclick = async () => {
+    try {
+      const r2 = await POST("/api/join/" + encodeURIComponent(tok), {});
+      if (!r2.data.ok) throw r2;
+      toast(t("joined_group")); await loadChats();
+      location.hash = "#/chat/" + r2.data.chat_id;
+    } catch (e) { toast(errMsg(e), true); }
+  };
+};
 
 /* ---------- profile ---------- */
 VIEWS.profile = async function () {

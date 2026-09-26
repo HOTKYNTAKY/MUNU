@@ -141,6 +141,11 @@ fa: {
   member_removed: "عضو حذف شد", added_to_group: "به گروه اضافه شدی ➕",
   need_title: "نام گروه لازم است", pick_members: "اعضا (اختیاری)",
   transfer_owner: "انتقال مالکیت", confirm_transfer: "مالکیت گروه به این عضو منتقل شود؟",
+  about: "درباره", group_about_ph: "توضیح گروه…", group_photo: "عکس گروه",
+  change_photo: "تغییر عکس", invite_link: "لینک دعوت", new_invite: "لینک جدید",
+  invite_newed: "لینک جدید ساخته شد ✅", join_group: "عضویت در گروه", join: "عضویت",
+  joined_group: "عضو گروه شدی ✅", bad_invite: "لینک دعوت نامعتبر است",
+  seen_by: "دیده‌شده توسط", seen_empty: "هنوز کسی ندیده", mentioned_you: "منشنت کرد",
 },
 en: {
   app: "Unmute", tagline: "Modern web messenger",
@@ -283,6 +288,11 @@ en: {
   member_removed: "Member removed", added_to_group: "You were added to a group ➕",
   need_title: "Group name is required", pick_members: "Members (optional)",
   transfer_owner: "Transfer ownership", confirm_transfer: "Transfer group ownership to this member?",
+  about: "About", group_about_ph: "Group description…", group_photo: "Group photo",
+  change_photo: "Change photo", invite_link: "Invite link", new_invite: "New link",
+  invite_newed: "New invite link created ✅", join_group: "Join group", join: "Join",
+  joined_group: "You joined the group ✅", bad_invite: "Invalid invite link",
+  seen_by: "Seen by", seen_empty: "Not seen by anyone yet", mentioned_you: "mentioned you",
 }
 };
 let LANG = localStorage.getItem("um_lang") || "fa";

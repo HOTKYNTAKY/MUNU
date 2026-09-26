@@ -294,6 +294,13 @@ def send_message(handler, u, chat_id, b):
             exec_sql("INSERT INTO message_state(message_id,user_id) VALUES(?,?)", (mid, uid))
             if not row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=? AND muted=1", (chat_id, uid)):
                 notify(uid, "message", {"chat_id": chat_id, "from": user_pub(u, uid)["username"], "preview": (text or "📎")[:80]})
+    gchat = row("SELECT type, title FROM chats WHERE id=?", (chat_id,))
+    if gchat and (gchat["type"] or "dm") == "group" and text:
+        for uname in set(re.findall(r"@([A-Za-z0-9_]{1,30})", text)):
+            t = row("SELECT id FROM users WHERE username=? AND status='active'", (uname,))
+            if t and t["id"] != me and row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=?", (chat_id, t["id"])):
+                notify(t["id"], "mention", {"chat_id": chat_id, "title": gchat["title"] or "👥",
+                                            "by": u["username"], "by_name": u["display_name"], "text": text[:120]})
     m = row("SELECT * FROM messages WHERE id=?", (mid,))
     mj = msg_json(m, me)
     # delivered to online peers

@@ -216,6 +216,14 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/chats/(\d+)/role$", p)
         if m and method == "POST":
             return api2.group_role(self, u, int(m.group(1)), b)
+        m = re.match(r"^/api/chats/(\d+)/invite$", p)
+        if m and method == "POST":
+            return api2.group_invite(self, u, int(m.group(1)))
+        m = re.match(r"^/api/join/([A-Za-z0-9_\-]{8,64})$", p)
+        if m and method == "GET":
+            return api2.join_info(self, u, m.group(1))
+        if m and method == "POST":
+            return api2.join_group(self, u, m.group(1))
         m = re.match(r"^/api/chats/(\d+)$", p)
         if m and method == "PATCH":
             return api2.group_update(self, u, int(m.group(1)), b)
@@ -236,6 +244,9 @@ class Handler(BaseHTTPRequestHandler):
             return api2.edit_message(self, u, int(m.group(1)), b)
         if m and method == "DELETE":
             return api2.delete_message(self, u, int(m.group(1)), q)
+        m = re.match(r"^/api/messages/(\d+)/seen$", p)
+        if m and method == "GET":
+            return api2.message_seen(self, u, int(m.group(1)))
         m = re.match(r"^/api/messages/(\d+)/(react|forward|pin)$", p)
         if m and method == "POST":
             fn = {"react": api2.react_message, "forward": api2.forward_message, "pin": api2.pin_message}[m.group(2)]

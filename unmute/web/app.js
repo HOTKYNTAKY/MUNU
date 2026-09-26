@@ -147,6 +147,7 @@ function mdLite(s) {
   let h = esc(s);
   h = h.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>").replace(/\n/g, "<br>");
   h = h.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  h = h.replace(/(^|[\s(>])(@[A-Za-z0-9_]{1,30})/g, '$1<span class="mention" data-mention="$2">$2</span>');
   return h;
 }
 function ticksHTML(m) {
@@ -323,6 +324,7 @@ async function router() {
   if (n === "notifications") return VIEWS.notifications();
   if (n === "settings") return VIEWS.settings();
   if (n === "profile") return VIEWS.profile();
+  if (n === "join") return VIEWS.join();
   if (n === "admin") return VIEWS.admin();
   location.hash = "#/chats";
 }

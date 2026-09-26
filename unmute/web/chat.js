@@ -53,7 +53,7 @@ function paintChatItems(filter) {
     const grp = isGroup(c);
     const last = c.last ? lastPreview(c.last, c) : "";
     const tm = c.last ? chatTime(c.last.created_at) : "";
-    const av = grp ? '<div class="av" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer);
+    const av = grp ? avatarHTML({ avatar: c.group.avatar }) : avatarHTML(c.peer);
     const nm = grp ? esc(c.group.title) : esc(c.peer.display_name);
     const sub = grp ? ' <span class="tag">👥' + c.group.members + "</span>" : "";
     return '<button class="ci' + (S.curChat === c.id ? " on" : "") + '" data-chat="' + c.id + '" role="listitem">' +
@@ -113,7 +113,7 @@ async function openChat(id, around) {
   S.gmembers = []; S.gmemberChat = grp ? id : 0; S.gname = {};
   paintChatItems(paneQ());
   const m = $("#main");
-  const headAv = grp ? '<div class="av" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer);
+  const headAv = grp ? avatarHTML({ avatar: c.group.avatar }) : avatarHTML(c.peer);
   const headNm = grp ? esc(c.group.title) : esc(c.peer.display_name);
   m.innerHTML =
     '<div class="chat-head"><button class="icon-btn back-btn" id="ch-back" aria-label="' + t("back") + '">←</button>' +
@@ -326,6 +326,9 @@ function bindMsgs(box) {
       else lastTap = n;
     }, { passive: true });
     el.addEventListener("touchend", () => clearTimeout(lp));
+  });
+  $$("[data-mention]", box).forEach(a => {
+    a.onclick = e => { e.stopPropagation(); location.hash = "#/profile/" + a.dataset.mention.slice(1); };
   });
 }
 function heartMsg(el, mid) {
@@ -596,6 +599,10 @@ function msgCtx(x, y, mid) {
   const m = msgById[mid]; if (!m || m.deleted_all || typeof mid !== "number") return;
   const mine = m.sender_id === S.me.id;
   const pinned = S.pins.some(p => p.message_id === mid);
+  const cc0 = chatById(S.curChat);
+  const grp0 = isGroup(cc0);
+  const myRole0 = grp0 ? (((cc0.group || {}).my_role) || "member") : null;
+  const canMod = grp0 && (myRole0 === "owner" || myRole0 === "admin");
   const items = [];
   items.push({ icon: "↩️", label: t("reply"), fn: () => { S.replyTo = mid; S.editId = null; paintReplyBar(); paintComposer(); const tx = $("#cp-tx"); if (tx) tx.focus(); } });
   items.push({ icon: "📋", label: t("copy"), fn: () => { navigator.clipboard.writeText(m.text || "").then(() => toast(t("msg_copied"))); } });
@@ -603,8 +610,9 @@ function msgCtx(x, y, mid) {
   items.push({ icon: "↪️", label: t("forward"), fn: () => forwardDlg(mid) });
   items.push({ icon: pinned ? "📌" : "📍", label: pinned ? t("unpin") : t("pin"), fn: () => pinMsg(mid, !pinned) });
   items.push({ sep: true });
+  if (grp0 && mine) items.push({ icon: "👁️", label: t("seen_by"), fn: () => seenDlg(mid) });
   items.push({ icon: mine ? "🗑️" : "🚫", label: t("delete_me"), fn: () => delMsg(mid, "me") });
-  if (mine) items.push({ icon: "🔥", label: t("delete_all"), danger: true, fn: async () => { if (await confirmDlg(t("confirm_delete"), t("delete"), true)) delMsg(mid, "all"); } });
+  if (mine || (!mine && canMod)) items.push({ icon: "🔥", label: t("delete_all"), danger: true, fn: async () => { if (await confirmDlg(t("confirm_delete"), t("delete"), true)) delMsg(mid, "all"); } });
   // quick reacts on top
   const root = $("#ctx-root");
   closeCtx();
@@ -645,12 +653,22 @@ async function delMsg(mid, scope) {
     renderMsgs(); toast(t("msg_deleted"));
   } catch (e) { toast(errMsg(e), true); }
 }
+async function seenDlg(mid) {
+  let seen = null;
+  try {
+    const r = await GET("/api/messages/" + mid + "/seen");
+    if (!r.data.ok) throw r;
+    seen = r.data.seen;
+  } catch (e) { toast(errMsg(e), true); return; }
+  const rows = seen.length ? seen.map(x => '<div class="member-row">' + avatarHTML(x, "sm") + '<span style="flex:1"><b>' + esc(x.display_name) + '</b><br><small style="color:var(--fg2)">' + dayLabel(x.read_at) + " · " + timeHM(x.read_at) + "</small></span></div>").join("") : '<div class="empty"><div class="big">👁️</div><p>' + t("seen_empty") + "</p></div>";
+  modal("<h3>👁️ " + t("seen_by") + " (" + seen.length + ")</h3>" + rows);
+}
 function forwardDlg(mid) {
   const avail = S.chats.filter(c => !c.archived);
   if (!avail.length) { toast(t("no_chats_yet"), true); return; }
   const ov = modal("<h3>" + t("fwd_to") + "</h3>" + avail.map(c => {
     const g = isGroup(c);
-    const av = g ? '<div class="av sm" style="background:' + esc(c.group.avatar.color) + '">' + esc(c.group.avatar.emoji) + "</div>" : avatarHTML(c.peer, "sm");
+    const av = g ? avatarHTML({ avatar: c.group.avatar }, "sm") : avatarHTML(c.peer, "sm");
     const nm = g ? esc(c.group.title) : esc(c.peer.display_name);
     return '<button class="ci" data-fc="' + c.id + '">' + av + '<span class="tx"><span class="nm">' + nm + "</span></span></button>";
   }).join(""));
@@ -749,6 +767,7 @@ function newGroupDlg() {
   let gE = G_EMOJI[0], gC = G_COLOR[0];
   const ov = modal("<h3>👥 " + t("new_group") + "</h3>" +
     '<div class="fld"><label>' + t("group_name") + '</label><input class="inp" id="ng-t" maxlength="60"></div>' +
+    '<div class="fld"><label>' + t("about") + '</label><input class="inp" id="ng-about" maxlength="300" placeholder="' + t("group_about_ph") + '"></div>' +
     '<div class="fld"><label>🎨</label><div class="emoji-bar" id="ng-e" style="flex-wrap:wrap">' + G_EMOJI.map(e => "<button data-e=\"" + e + "\">" + e + "</button>").join("") + "</div>" +
     '<div class="emoji-bar" id="ng-c" style="flex-wrap:wrap;margin-top:6px">' + G_COLOR.map(x => '<button data-c="' + x + '"><span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:' + x + '"></span></button>').join("") + "</div></div>" +
     (contacts.length ? '<div class="fld"><label>' + t("pick_members") + '</label><div id="ng-m" style="max-height:180px;overflow-y:auto">' +
@@ -769,7 +788,8 @@ function newGroupDlg() {
     if (!title) { toast(t("need_title"), true); return; }
     const members = $$("#ng-m input:checked", ov).map(x => x.value);
     try {
-      const r = await POST("/api/chats/group", { title, avatar: gE + "|" + gC, members });
+      const about = ov.querySelector("#ng-about").value.trim();
+      const r = await POST("/api/chats/group", { title, about, avatar: gE + "|" + gC, members });
       if (!r.data.ok) throw r;
       closeModal(); toast(t("group_created"));
       await loadChats();
@@ -802,11 +822,17 @@ async function groupInfoDlg(c) {
       return '<div class="member-row" data-pf="' + esc(x.username) + '">' + avatarHTML(x, "sm") +
         '<span style="flex:1;min-width:0"><b>' + esc(x.display_name) + "</b> " + pill + '<br><small style="color:var(--fg2)" dir="ltr">@' + esc(x.username) + "</small></span>" + acts + "</div>";
     }).join("");
-    const ov = modal('<div class="row" style="align-items:center;margin-bottom:10px"><div class="av" style="background:' + esc(g.avatar.color) + ";width:52px;height:52px;font-size:26px\">" + esc(g.avatar.emoji) + "</div>" +
-      '<div style="flex:1"><h3 style="margin:0">' + esc(g.title) + "</h3><small style=\"color:var(--fg2)\">" + info.members.length + " " + t("member_one") + "</small></div>" +
+    const invLink = g.invite ? location.origin + "/#/join/" + g.invite : "";
+    const refreshHead = () => { const cc = chatById(c.id); if (!cc || !isGroup(cc) || S.curChat !== c.id) return; const hn = document.querySelector("#ch-tx .nm"); if (hn) hn.textContent = cc.group.title; const hav = document.querySelector("#ch-av"); if (hav) hav.innerHTML = avatarHTML({ avatar: cc.group.avatar }); paintHeadStatus(); };
+    const ov = modal('<div class="row" style="align-items:center;margin-bottom:10px">' + avatarHTML({ avatar: g.avatar }) +
+      '<div style="flex:1;min-width:0"><h3 style="margin:0">' + esc(g.title) + "</h3><small style=\"color:var(--fg2)\">" + info.members.length + " " + t("member_one") + "</small>" + (g.about ? "<div style=\"font-size:13px;color:var(--fg2);margin-top:2px\">" + esc(g.about) + "</div>" : "") + "</div>" +
       '<button class="icon-btn" id="gi-x">✕</button></div>' +
-      (canEdit ? '<div class="fld"><label>' + t("edit_group") + '</label><div class="row"><input class="inp" id="gi-t" maxlength="60" value="' + esc(g.title) + '" style="flex:1"><button class="btn sm" id="gi-save">' + t("save") + "</button></div></div>" +
+      (canEdit ? '<div class="fld"><label>' + t("edit_group") + '</label><div class="row"><input class="inp" id="gi-t" maxlength="60" value="' + esc(g.title) + '" style="flex:1"></div>' +
+        '<div class="row" style="margin-top:6px"><input class="inp" id="gi-about" maxlength="300" value="' + esc(g.about || "") + '" placeholder="' + t("group_about_ph") + '" style="flex:1"><button class="btn sm" id="gi-save">' + t("save") + "</button></div></div>" +
+        '<div class="fld"><label>' + t("group_photo") + '</label><div class="row"><button class="btn sm ghost" id="gi-ph">📷 ' + t("change_photo") + "</button>" + (g.avatar.img ? '<button class="btn sm ghost" id="gi-phdel">' + t("remove_photo") + "</button>" : "") + "</div></div>" +
+        '<input type="file" id="gi-file" accept="image/*" style="display:none">' +
         '<div class="fld"><label>' + t("add_member") + '</label><div class="row"><input class="inp" id="gi-u" dir="ltr" placeholder="' + t("member_username") + '" style="flex:1"><button class="btn sm" id="gi-add">➕</button></div></div>' : "") +
+      (invLink ? '<div class="fld"><label>' + t("invite_link") + '</label><div class="row"><input class="inp" dir="ltr" readonly value="' + esc(invLink) + '" style="flex:1;font-size:12px"><button class="btn sm ghost" id="gi-copy">' + t("copy") + '</button><button class="btn sm ghost" id="gi-newlink">🔄</button></div></div>' : "") +
       '<div style="max-height:300px;overflow-y:auto">' + rows + "</div>" +
       '<div class="macts"><button class="btn danger ghost" id="gi-leave">' + t("leave_group") + "</button></div>");
     ov.querySelector("#gi-x").onclick = closeModal;
@@ -815,7 +841,8 @@ async function groupInfoDlg(c) {
     if (sv) sv.onclick = async () => {
       const title = ov.querySelector("#gi-t").value.trim();
       if (!title) { toast(t("need_title"), true); return; }
-      try { const r = await PATCH("/api/chats/" + c.id, { title }); if (!r.data.ok) throw r; await loadChats(); groupInfoDlg(chatById(c.id) || c); } catch (e) { toast(errMsg(e), true); }
+      const about = ov.querySelector("#gi-about").value.trim();
+      try { const r = await PATCH("/api/chats/" + c.id, { title, about }); if (!r.data.ok) throw r; await loadChats(); refreshHead(); groupInfoDlg(chatById(c.id) || c); } catch (e) { toast(errMsg(e), true); }
     };
     const ad = ov.querySelector("#gi-add");
     if (ad) ad.onclick = async () => {
@@ -825,6 +852,47 @@ async function groupInfoDlg(c) {
         const r = await POST("/api/chats/" + c.id + "/members", { username: un });
         if (!r.data.ok) throw r;
         toast(t("member_added")); await loadChats(); loadChatMembers(c.id);
+        groupInfoDlg(chatById(c.id) || c);
+      } catch (e) { toast(errMsg(e), true); }
+    };
+    const ph = ov.querySelector("#gi-ph");
+    if (ph) ph.onclick = () => ov.querySelector("#gi-file").click();
+    const phf = ov.querySelector("#gi-file");
+    if (phf) phf.onchange = async e => {
+      const f = e.target.files[0]; e.target.value = "";
+      if (!f) return;
+      if (!f.type.startsWith("image/")) { toast(t("err_file_type"), true); return; }
+      ph.disabled = true;
+      try {
+        const blob = await compressAvatar(f);
+        const fd = new FormData();
+        fd.append("file", blob, "group.jpg");
+        const r = await POST("/api/upload", fd);
+        if (!r.data.ok) throw r;
+        const r2 = await PATCH("/api/chats/" + c.id, { avatar_img: r.data.att.id });
+        if (!r2.data.ok) throw r2;
+        toast(t("photo_updated")); await loadChats(); refreshHead();
+        groupInfoDlg(chatById(c.id) || c);
+      } catch (err) { toast(errMsg(err), true); }
+      ph.disabled = false;
+    };
+    const phd = ov.querySelector("#gi-phdel");
+    if (phd) phd.onclick = async () => {
+      try {
+        const r = await PATCH("/api/chats/" + c.id, { avatar_img: 0 });
+        if (!r.data.ok) throw r;
+        await loadChats(); refreshHead();
+        groupInfoDlg(chatById(c.id) || c);
+      } catch (e) { toast(errMsg(e), true); }
+    };
+    const cp = ov.querySelector("#gi-copy");
+    if (cp) cp.onclick = () => { navigator.clipboard.writeText(invLink).then(() => toast(t("copied_link"))); };
+    const nl = ov.querySelector("#gi-newlink");
+    if (nl) nl.onclick = async () => {
+      try {
+        const r = await POST("/api/chats/" + c.id + "/invite", {});
+        if (!r.data.ok) throw r;
+        toast(t("invite_newed")); await loadChats();
         groupInfoDlg(chatById(c.id) || c);
       } catch (e) { toast(errMsg(e), true); }
     };
@@ -916,6 +984,8 @@ function onWSMsg(m) {
     }
   } else loadChats();
   if (m.sender_id !== S.me.id && S.curChat !== m.chat_id) {
+    const mp0 = S._mentionPing;
+    if (mp0 && mp0.c === m.chat_id && Date.now() - mp0.at < 2500) return; // mention ping already fired
     beep();
     const cc = chatById(m.chat_id);
     if (cc && !cc.muted) {
@@ -930,6 +1000,8 @@ function onWSNotify(m) {
   S.notifs.unshift({ id: Date.now(), kind: m.kind, payload: m.payload, read: 0, created_at: Date.now() });
   renderSideBadges();
   if (m.kind === "system") { beep(); browserNotify(t("sys_msg"), (m.payload.text || "").slice(0, 120), () => { location.hash = "#/notifications"; }); }
+  if (m.kind === "mention") { const p = m.payload || {}; if (p.chat_id && p.chat_id !== S.curChat) { beep(); S._mentionPing = { c: p.chat_id, at: Date.now() }; browserNotify("@" + (p.by || "") + " · " + (p.title || t("group")), ((p.by_name || "") + " " + t("mentioned_you")).slice(0, 120), () => { location.hash = "#/chat/" + p.chat_id; }); } }
+  if (m.kind === "group") { const p = m.payload || {}; if (p.chat_id) { beep(); browserNotify("👥 " + (p.title || t("group")), t("added_to_group"), () => { location.hash = "#/chat/" + p.chat_id; }); } }
   if (S.route.name === "notifications" && typeof paintNotifs === "function") paintNotifs();
 }
 function onWSRead(m) {

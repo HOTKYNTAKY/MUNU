@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import secrets
 
 import db
 import util
@@ -231,13 +232,16 @@ def _group_avatar(g):
         em, col = raw.split("|", 1)
     else:
         em, col = "👥", "#0ea5e9"
-    return {"emoji": em, "color": col}
+    out = {"emoji": em, "color": col}
+    if g.get("avatar_img"):
+        out["img"] = "/api/media/%d" % g["avatar_img"]
+    return out
 
 
 def chat_list(handler, u):
     me = u["id"]
     hub = getattr(handler, "hub", None)
-    cms = rows("""SELECT cm.*, c.type, c.title, c.avatar g_avatar, c.owner_id, c.created_at c_created
+    cms = rows("""SELECT cm.*, c.type, c.title, c.avatar g_avatar, c.owner_id, c.about, c.avatar_img, c.invite_token, c.created_at c_created
                   FROM chat_members cm JOIN chats c ON c.id=cm.chat_id
                   WHERE cm.user_id=?""", (me,))
     out = []
@@ -258,10 +262,13 @@ def chat_list(handler, u):
             mems = rows("SELECT user_id FROM chat_members WHERE chat_id=?", (cm["chat_id"],))
             online_n = sum(1 for x in mems if hub and hub.online_count(x["user_id"]) > 0)
             item["group"] = {
-                "title": cm["title"] or "👥", "avatar": _group_avatar({"avatar": cm["g_avatar"]}),
-                "members": len(mems), "online": online_n, "owner_id": cm["owner_id"],
-                "my_role": cm["role"] or "member",
+                "title": cm["title"] or "👥",
+                "avatar": _group_avatar({"avatar": cm["g_avatar"], "avatar_img": cm["avatar_img"]}),
+                "about": cm["about"] or "", "members": len(mems), "online": online_n,
+                "owner_id": cm["owner_id"], "my_role": cm["role"] or "member",
             }
+            if (cm["role"] or "member") in ("owner", "admin") and cm["invite_token"]:
+                item["group"]["invite"] = cm["invite_token"]
             if last and last["sender_id"] != me:
                 sn = row("SELECT display_name FROM users WHERE id=?", (last["sender_id"],))
                 item["last_sender"] = sn["display_name"] if sn else ""
@@ -318,6 +325,7 @@ def group_create(handler, u, b):
     title = (b.get("title") or "").strip()[:60]
     if not title:
         return handler.j({"ok": False, "error": "title"}, 400)
+    about = (b.get("about") or "").strip()[:300]
     av = b.get("avatar") or "👥|#0ea5e9"
     if not re.match(AV_RE, av):
         av = "👥|#0ea5e9"
@@ -326,8 +334,8 @@ def group_create(handler, u, b):
         t = row("SELECT id, status FROM users WHERE username=?", (str(n or "").strip(),))
         if t and t["status"] == "active" and t["id"] != u["id"] and t["id"] not in ids:
             ids.append(t["id"])
-    cid = exec_sql("INSERT INTO chats(type,title,avatar,owner_id,created_at) VALUES('group',?,?,?,?)",
-                   (title, av, u["id"], now_ms()))
+    cid = exec_sql("INSERT INTO chats(type,title,avatar,owner_id,about,invite_token,created_at) VALUES('group',?,?,?,?,?,?)",
+                   (title, av, u["id"], about, secrets.token_urlsafe(12), now_ms()))
     exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (cid, u["id"], "owner"))
     for i in ids:
         exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (cid, i, "member"))
@@ -354,9 +362,11 @@ def group_info(handler, u, chat_id):
         if hub:
             mu["online"] = hub.online_count(t["id"]) > 0
         mems.append(mu)
-    return handler.j({"ok": True, "group": {"id": g["id"], "title": g["title"] or "👥",
-                                            "avatar": _group_avatar(g), "owner_id": g["owner_id"]},
-                      "members": mems, "my_role": role})
+    gout = {"id": g["id"], "title": g["title"] or "👥", "about": g.get("about") or "",
+            "avatar": _group_avatar(g), "owner_id": g["owner_id"]}
+    if role in ("owner", "admin") and g.get("invite_token"):
+        gout["invite"] = g["invite_token"]
+    return handler.j({"ok": True, "group": gout, "members": mems, "my_role": role})
 
 
 def group_update(handler, u, chat_id, b):
@@ -375,11 +385,72 @@ def group_update(handler, u, chat_id, b):
     if "avatar" in b and re.match(AV_RE, b["avatar"] or ""):
         sets.append("avatar=?")
         vals.append(b["avatar"])
+    if "about" in b:
+        sets.append("about=?")
+        vals.append((b["about"] or "").strip()[:300])
+    new_img = None
+    if "avatar_img" in b:
+        try:
+            aid = int(b["avatar_img"] or 0)
+        except (ValueError, TypeError):
+            aid = 0
+        if aid:
+            a = row("SELECT * FROM attachments WHERE id=? AND owner_id=?", (aid, u["id"]))
+            if not a or a["kind"] != "image":
+                return handler.j({"ok": False, "error": "bad_photo"}, 400)
+            sets.append("avatar_img=?")
+            vals.append(aid)
+            new_img = aid
+        else:
+            sets.append("avatar_img=NULL")
+            new_img = 0
     if not sets:
         return handler.j({"ok": False, "error": "nothing"}, 400)
+    old_img = g.get("avatar_img")
     exec_sql("UPDATE chats SET %s WHERE id=?" % ",".join(sets), vals + [chat_id])
+    if new_img is not None and old_img and old_img != new_img:
+        if not row("SELECT 1 FROM users WHERE avatar_img=?", (old_img,)) and \
+           not row("SELECT 1 FROM chats WHERE avatar_img=? AND id!=?", (old_img, chat_id)):
+            _delete_attachment(old_img)
     _chats_changed(handler, chat_members(chat_id))
     return handler.j({"ok": True})
+
+
+def group_invite(handler, u, chat_id):
+    g = _get_group(chat_id)
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if _my_role(chat_id, u["id"]) not in ("owner", "admin"):
+        return handler.j({"ok": False, "error": "forbidden"}, 403)
+    tok = secrets.token_urlsafe(12)
+    exec_sql("UPDATE chats SET invite_token=? WHERE id=?", (tok, chat_id))
+    _chats_changed(handler, chat_members(chat_id))
+    return handler.j({"ok": True, "invite": tok})
+
+
+def join_info(handler, u, token):
+    g = row("SELECT * FROM chats WHERE invite_token=? AND type='group'", (token,))
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    n = row("SELECT COUNT(*) n FROM chat_members WHERE chat_id=?", (g["id"],))["n"]
+    return handler.j({"ok": True, "group": {"id": g["id"], "title": g["title"] or "👥",
+                                            "about": g.get("about") or "", "avatar": _group_avatar(g),
+                                            "members": n},
+                      "is_member": bool(_my_role(g["id"], u["id"]))})
+
+
+def join_group(handler, u, token):
+    g = row("SELECT * FROM chats WHERE invite_token=? AND type='group'", (token,))
+    if not g:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if _my_role(g["id"], u["id"]):
+        return handler.j({"ok": True, "chat_id": g["id"], "already": True})
+    n = row("SELECT COUNT(*) n FROM chat_members WHERE chat_id=?", (g["id"],))["n"]
+    if n >= GROUP_CAP:
+        return handler.j({"ok": False, "error": "full"}, 403)
+    exec_sql("INSERT INTO chat_members(chat_id,user_id,role) VALUES(?,?,?)", (g["id"], u["id"], "member"))
+    _chats_changed(handler, [u["id"]] + chat_members(g["id"]))
+    return handler.j({"ok": True, "chat_id": g["id"]})
 
 
 def group_add(handler, u, chat_id, b):
@@ -529,7 +600,9 @@ def delete_message(handler, u, mid, q):
     me = u["id"]
     if scope == "all":
         if m["sender_id"] != me:
-            return handler.j({"ok": False, "error": "not_allowed"}, 403)
+            g = row("SELECT type FROM chats WHERE id=?", (m["chat_id"],))
+            if not g or (g["type"] or "dm") != "group" or _my_role(m["chat_id"], me) not in ("owner", "admin"):
+                return handler.j({"ok": False, "error": "not_allowed"}, 403)
         exec_sql("UPDATE messages SET deleted=1, text='' WHERE id=?", (mid,))
         push_msg(m["chat_id"], {"t": "deleted_all", "id": mid, "chat_id": m["chat_id"]})
     else:
@@ -540,6 +613,23 @@ def delete_message(handler, u, mid, q):
         if HUB := handler.hub:
             HUB.send_user(me, {"t": "deleted_me", "id": mid, "chat_id": m["chat_id"]})
     return handler.j({"ok": True})
+
+
+def message_seen(handler, u, mid):
+    m = row("SELECT * FROM messages WHERE id=?", (mid,))
+    if not m or m["deleted"]:
+        return handler.j({"ok": False, "error": "notfound"}, 404)
+    if not row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=?", (m["chat_id"], u["id"])):
+        return handler.j({"ok": False, "error": "not_member"}, 403)
+    out = []
+    for s in rows("SELECT user_id, read_at FROM message_state WHERE message_id=? AND read_at>0 ORDER BY read_at", (mid,)):
+        t = user_by_id(s["user_id"])
+        if not t:
+            continue
+        pu = user_pub(t, u["id"])
+        pu["read_at"] = s["read_at"]
+        out.append(pu)
+    return handler.j({"ok": True, "seen": out})
 
 
 def react_message(handler, u, mid, b):
@@ -639,6 +729,8 @@ def expire_media():
     for o in olds:
         if row("SELECT 1 FROM users WHERE avatar_img=?", (o["id"],)):
             continue  # a profile photo: keep forever
+        if row("SELECT 1 FROM chats WHERE avatar_img=?", (o["id"],)):
+            continue  # a group photo: keep forever
         _delete_attachment(o["id"])
         n += 1
     return n
@@ -694,6 +786,10 @@ def media(handler, u, att_id):
             t = user_by_id(trow["id"])
             if t and priv_allow(settings_of(t["id"])["priv_photo"], u["id"], t["id"]):
                 ok = True
+    if not ok:
+        # group photo: semi-public (needed for invite-link preview)
+        if row("SELECT 1 FROM chats WHERE avatar_img=? AND type='group'", (att_id,)):
+            ok = True
     if not ok:
         return handler.j({"ok": False}, 403)
     try:

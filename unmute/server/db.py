@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS sessions(
 CREATE TABLE IF NOT EXISTS chats(
   id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL DEFAULT 'dm',
   title TEXT, avatar TEXT NOT NULL DEFAULT '👥|#0ea5e9', owner_id INTEGER,
+  about TEXT NOT NULL DEFAULT '', avatar_img INTEGER, invite_token TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS chat_members(
@@ -146,6 +147,12 @@ def init():
         c.execute("ALTER TABLE chats ADD COLUMN avatar TEXT NOT NULL DEFAULT '👥|#0ea5e9'")
     if "owner_id" not in ccols:
         c.execute("ALTER TABLE chats ADD COLUMN owner_id INTEGER")
+    if "about" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN about TEXT NOT NULL DEFAULT ''")
+    if "avatar_img" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN avatar_img INTEGER")
+    if "invite_token" not in ccols:
+        c.execute("ALTER TABLE chats ADD COLUMN invite_token TEXT")
     mcols = [r[1] for r in c.execute("PRAGMA table_info(chat_members)").fetchall()]
     if "role" not in mcols:
         c.execute("ALTER TABLE chat_members ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
