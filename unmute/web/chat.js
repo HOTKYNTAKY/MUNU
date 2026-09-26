@@ -205,6 +205,7 @@ function msgHTML(m) {
   if ((m.text || "").includes("\n↪ fwd")) inner += '<div class="fwd-mark">↪ ' + t("fwd_mark") + "</div>";
   const txt = (m.text || "").replace(/\n↪ fwd$/, "");
   (m.atts || []).forEach(a => { inner += attHTML(a, m); });
+  if ((m.type || "text") !== "text" && !(m.atts || []).length && !txt) inner += '<div class="att-expired">' + t("media_expired") + "</div>";
   if (txt) inner += '<div class="tx">' + mdLite(txt) + "</div>";
   const rx = m.reactions || {};
   const rks = Object.keys(rx);
@@ -246,7 +247,10 @@ function bindAudio(root) {
     l.href = mediaUrl(a); l.download = a.filename; l.target = "_blank";
     document.body.appendChild(l); l.click(); l.remove();
   });
-  $$("[data-gal]", root).forEach(im => im.onclick = () => openGallery(im.dataset.gal));
+  $$("[data-gal]", root).forEach(im => {
+    im.onerror = () => { const d = document.createElement("div"); d.className = "att-expired"; d.textContent = t("media_expired"); im.replaceWith(d); };
+    im.onclick = () => openGallery(im.dataset.gal);
+  });
   $$("[data-goto]", root).forEach(g => g.onclick = e => {
     e.stopPropagation();
     const el = $('#msgs [data-mid="' + g.dataset.goto + '"]');

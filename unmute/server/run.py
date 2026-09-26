@@ -336,7 +336,21 @@ def _rl_ok(h):
     return _rl.hit(h.client_address[0])
 
 
+def _expiry_loop():
+    import time as _t
+    _t.sleep(30)
+    while True:
+        try:
+            n = api2.expire_media()
+            if n:
+                print("expired %d media file(s)" % n, flush=True)
+        except Exception as e:
+            print("expiry error: %s" % e, flush=True)
+        _t.sleep(600)
+
+
 def main():
+    threading.Thread(target=_expiry_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     srv.daemon_threads = True
     print("UNMUTE listening on 0.0.0.0:%d (dev=%s)" % (PORT, os.environ.get("UM_DEV", "0")), flush=True)

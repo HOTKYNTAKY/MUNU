@@ -104,7 +104,8 @@ function closeCtx() { $("#ctx-root").innerHTML = ""; }
 function avatarHTML(u, cls) {
   const a = (u && u.avatar) || { emoji: "🧑", color: "#6d5ef1" };
   const on = u && u.online ? '<span class="on"></span>' : "";
-  return '<div class="av ' + (cls || "") + '" style="background:' + esc(a.color) + '">' + esc(a.emoji) + on + "</div>";
+  const img = a.img ? '<img src="' + esc(a.img) + "?token=" + encodeURIComponent(S.token) + '" alt="" loading="lazy" onerror="this.remove()">' : "";
+  return '<div class="av ' + (cls || "") + '" style="background:' + esc(a.color) + '">' + esc(a.emoji) + img + on + "</div>";
 }
 function timeHM(ts) {
   const d = new Date(ts); const h = d.getHours(), m = d.getMinutes();

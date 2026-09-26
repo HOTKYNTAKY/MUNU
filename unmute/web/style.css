@@ -75,6 +75,8 @@ a{color:var(--accent)}
 .av.sm{width:36px;height:36px;font-size:18px}
 .av.xs{width:30px;height:30px;font-size:15px}
 .av .on{position:absolute;bottom:0;inset-inline-end:0;width:13px;height:13px;border-radius:50%;background:var(--ok);border:2.5px solid var(--bg2)}
+.av img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
+.att-expired{font-size:12.5px;opacity:.75;font-style:italic;padding:6px 2px}
 .tag{font-size:10px;color:var(--fg3)}
 .sec-title{padding:10px 14px 4px;color:var(--fg3);font-size:12px;font-weight:700}
 

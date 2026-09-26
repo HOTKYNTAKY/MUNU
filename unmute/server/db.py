@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users(
   email TEXT UNIQUE COLLATE NOCASE,
   pass_hash TEXT NOT NULL, salt TEXT NOT NULL,
   avatar TEXT NOT NULL DEFAULT '🧑🚀|#1a212c',
+  avatar_img INTEGER,
   cover TEXT,
   bio TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'user',
@@ -79,7 +80,8 @@ CREATE TABLE IF NOT EXISTS attachments(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   owner_id INTEGER NOT NULL, message_id INTEGER,
   kind TEXT NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL,
-  size INTEGER NOT NULL, path TEXT NOT NULL, meta TEXT NOT NULL DEFAULT '{}'
+  size INTEGER NOT NULL, path TEXT NOT NULL, meta TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS pins(
   chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL, by_id INTEGER NOT NULL,
@@ -127,4 +129,14 @@ CREATE INDEX IF NOT EXISTS idx_att_msg ON attachments(message_id);
 def init():
     c = conn()
     c.executescript(SCHEMA)
+    # ---- migrations for existing DBs ----
+    acols = [r[1] for r in c.execute("PRAGMA table_info(attachments)").fetchall()]
+    if "created_at" not in acols:
+        c.execute("ALTER TABLE attachments ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
+    ucols = [r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()]
+    if "avatar_img" not in ucols:
+        c.execute("ALTER TABLE users ADD COLUMN avatar_img INTEGER")
+    import time as _t
+    # existing media counts from now (expires TTL after update)
+    c.execute("UPDATE attachments SET created_at=? WHERE created_at=0", (int(_t.time() * 1000),))
     c.commit()

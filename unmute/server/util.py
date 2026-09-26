@@ -59,6 +59,7 @@ EXT_KIND = {
 }
 ALLOWED_EXT = set(EXT_KIND)
 MAX_UPLOAD = 25 * 1024 * 1024
+MAX_AVATAR = 512 * 1024   # profile photos must be client-compressed (256px jpeg ≈ 20-60KB)
 
 
 def kind_of(filename: str, mime: str) -> str:

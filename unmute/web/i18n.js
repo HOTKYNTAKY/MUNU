@@ -127,6 +127,9 @@ fa: {
   unpinned_done: "سنجاق برداشته شد", reacted: "ری‌اکشن ثبت شد",
   copied_link: "لینک کپی شد", profile_link: "لینک پروفایل",
   load_more: "نمایش بیشتر", end_of_history: "ابتدای گفتگو 👋",
+  media_expired: "رسانه پس از ۲۴ ساعت حذف شد ⏳",
+  photo_from_gallery: "عکس از گالری", remove_photo: "حذف عکس",
+  photo_updated: "عکس پروفایل به‌روز شد ✅",
 },
 en: {
   app: "Unmute", tagline: "Modern web messenger",
@@ -255,6 +258,9 @@ en: {
   unpinned_done: "Unpinned", reacted: "Reaction added",
   copied_link: "Link copied", profile_link: "Profile link",
   load_more: "Show more", end_of_history: "Start of conversation 👋",
+  media_expired: "Media expired after 24h ⏳",
+  photo_from_gallery: "Photo from gallery", remove_photo: "Remove photo",
+  photo_updated: "Profile photo updated ✅",
 }
 };
 let LANG = localStorage.getItem("um_lang") || "fa";

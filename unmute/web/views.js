@@ -215,7 +215,7 @@ VIEWS.profile = async function () {
   const mine = u.id === S.me.id;
   const cover = u.cover || u.avatar.color;
   v.innerHTML = '<div class="cover" style="background:linear-gradient(135deg,' + esc(cover) + ',var(--bg3))"></div>' +
-    '<div class="card"><div class="pf-head"><div class="av" style="background:' + esc((u.avatar || {}).color || "#6d5ef1") + ';width:88px;height:88px;font-size:44px;border:4px solid var(--bg2)">' + esc((u.avatar || {}).emoji || "🧑") + "</div>" +
+    '<div class="card"><div class="pf-head"><div class="av" style="background:' + esc((u.avatar || {}).color || "#6d5ef1") + ';width:88px;height:88px;font-size:44px;border:4px solid var(--bg2)">' + esc((u.avatar || {}).emoji || "🧑") + ((u.avatar || {}).img ? '<img src="' + esc(u.avatar.img) + "?token=" + encodeURIComponent(S.token) + '" alt="" onerror="this.remove()">' : "") + "</div>" +
     '<div><h2>' + esc(u.display_name) + "</h2><div dir='ltr' style='color:var(--fg2)'>@" + esc(u.username) + "</div>" +
     '<div style="font-size:12.5px;color:' + (u.online ? "var(--ok)" : "var(--fg3)") + '">' + (u.online ? "🟢 " + t("online") : "⚪ " + t("last_seen") + " " + lastSeenTx(u.last_seen, false)) + "</div></div></div>" +
     (u.bio ? "<p style='margin:8px 0'>" + esc(u.bio) + "</p>" : "") +
@@ -259,9 +259,35 @@ VIEWS.profile = async function () {
     $("#pf-rp").onclick = () => reportDlg(u.username);
   }
 };
+function compressAvatar(file) {
+  // client-side optimize: cover-crop to 256x256 jpeg (~20-60KB)
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const S2 = 256, cv = document.createElement("canvas");
+        cv.width = S2; cv.height = S2;
+        const cx = cv.getContext("2d");
+        const sc = Math.max(S2 / img.width, S2 / img.height);
+        const w = img.width * sc, h = img.height * sc;
+        cx.drawImage(img, (S2 - w) / 2, (S2 - h) / 2, w, h);
+        URL.revokeObjectURL(img.src);
+        cv.toBlob(b => b ? res(b) : rej(new Error("enc")), "image/jpeg", 0.82);
+      } catch (e) { rej(e); }
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
 function editProfileDlg() {
   let avE = (S.me.avatar || {}).emoji || AV_EMOJI[0], avC = (S.me.avatar || {}).color || AV_COLORS[0];
+  let newAvId = undefined; // set when a new photo is uploaded in this dialog
+  const curImg = (S.me.avatar || {}).img;
   const ov = modal("<h3>✏️ " + t("edit_profile") + "</h3>" +
+    '<div class="row" style="margin-bottom:12px"><span id="e-ph-prev">' + avatarHTML(S.me) + '</span><span style="flex:1"></span>' +
+    '<button class="btn sm ghost" id="e-ph-up">📷 ' + t("photo_from_gallery") + "</button>" +
+    (curImg ? '<button class="btn sm ghost" id="e-ph-del">' + t("remove_photo") + "</button>" : "") + "</div>" +
+    '<input type="file" id="e-ph-file" accept="image/*" style="display:none">' +
     '<div class="av-pick" id="e-avs"></div><div class="clr-pick" id="e-clr"></div>' +
     '<div class="fld"><label>' + t("display_name") + '</label><input class="inp" id="e-d" value="' + esc(S.me.display_name) + '"></div>' +
     '<div class="fld"><label>' + t("bio") + '</label><textarea class="inp" id="e-b">' + esc(S.me.bio || "") + "</textarea></div>" +
@@ -274,9 +300,32 @@ function editProfileDlg() {
   $$("#e-clr button", ov).forEach(b => b.onclick = ev => { ev.preventDefault(); avC = b.dataset.c; $$("#e-clr button", ov).forEach(x => x.classList.toggle("on", x === b)); paint(); });
   paint();
   $("#e-x", ov).onclick = closeModal;
+  $("#e-ph-up", ov).onclick = () => $("#e-ph-file", ov).click();
+  const delB = $("#e-ph-del", ov);
+  if (delB) delB.onclick = () => { newAvId = 0; $("#e-ph-prev", ov).innerHTML = avatarHTML({ avatar: { emoji: avE, color: avC } }); delB.remove(); };
+  $("#e-ph-file", ov).onchange = async e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { toast(t("err_file_type"), true); return; }
+    const btn = $("#e-ph-up", ov); btn.disabled = true;
+    try {
+      const blob = await compressAvatar(f);
+      const fd = new FormData();
+      fd.append("file", blob, "avatar.jpg");
+      fd.append("meta", JSON.stringify({ avatar: true }));
+      const r = await POST("/api/upload", fd);
+      if (!r.data.ok) throw r;
+      newAvId = r.data.att.id;
+      $("#e-ph-prev", ov).innerHTML = '<div class="av" style="background:' + esc(avC) + '"><img src="' + r.data.att.url + "?token=" + encodeURIComponent(S.token) + '" style="position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover"></div>';
+      toast(t("photo_updated"));
+    } catch (err) { toast(errMsg(err), true); }
+    btn.disabled = false;
+  };
   $("#e-ok", ov).onclick = async () => {
     try {
-      const r = await PATCH("/api/me", { display_name: $("#e-d", ov).value.trim(), bio: $("#e-b", ov).value.trim(), avatar: avE + "|" + avC });
+      const patch = { display_name: $("#e-d", ov).value.trim(), bio: $("#e-b", ov).value.trim(), avatar: avE + "|" + avC };
+      if (newAvId !== undefined) patch.avatar_img = newAvId;
+      const r = await PATCH("/api/me", patch);
       if (!r.data.ok) throw r;
       S.me = r.data.user; closeModal(); renderSideBadges(); VIEWS.profile(); toast(t("saved"));
     } catch (e) { toast(errMsg(e), true); }

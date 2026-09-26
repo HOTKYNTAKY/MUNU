@@ -84,6 +84,8 @@ def user_pub(u, viewer=None):
     }
     if viewer and priv_allow(s["priv_photo"], viewer, u["id"]):
         out["cover"] = u.get("cover")
+    if u.get("avatar_img") and (not viewer or priv_allow(s["priv_photo"], viewer, u["id"])):
+        out["avatar"]["img"] = "/api/media/%d" % u["avatar_img"]
     online = HUB.online_count(u["id"]) > 0 if HUB else False
     if viewer and priv_allow(s["priv_online"], viewer, u["id"]):
         out["online"] = online

@@ -33,10 +33,25 @@ def patch_me(handler, u, b):
         fields["avatar"] = b["avatar"]
     if "cover" in b:
         fields["cover"] = (b["cover"] or "")[:40]
+    if "avatar_img" in b:
+        try:
+            aid = int(b["avatar_img"] or 0)
+        except (ValueError, TypeError):
+            aid = 0
+        if aid:
+            a = row("SELECT * FROM attachments WHERE id=? AND owner_id=?", (aid, u["id"]))
+            if not a or a["kind"] != "image":
+                return handler.j({"ok": False, "error": "bad_avatar"}, 400)
+            fields["avatar_img"] = aid
+        else:
+            fields["avatar_img"] = None
     if not fields:
         return handler.j({"ok": False, "error": "nothing"}, 400)
+    old_av = u.get("avatar_img")
     sql = "UPDATE users SET " + ",".join("%s=?" % k for k in fields) + " WHERE id=?"
     exec_sql(sql, list(fields.values()) + [u["id"]])
+    if "avatar_img" in fields and old_av and old_av != fields["avatar_img"]:
+        _delete_attachment(old_av)  # replaced/removed photo: free disk immediately
     nu = user_by_id(u["id"])
     if HUB := handler.hub:
         HUB.send_many(handler.hub.online_ids(), {"t": "presence", "user": user_pub(nu, None)})
@@ -351,8 +366,21 @@ def forward_message(handler, u, mid, b):
     new_mid = exec_sql("INSERT INTO messages(chat_id,sender_id,type,text,created_at) VALUES(?,?,?,?,?)",
                        (to, u["id"], m["type"], m["text"] + ("\n↪ fwd" if m["text"] else ""), now_ms()))
     for a in rows("SELECT * FROM attachments WHERE message_id=?", (mid,)):
-        exec_sql("INSERT INTO attachments(owner_id,message_id,kind,filename,mime,size,path,meta) VALUES(?,?,?,?,?,?,?,?)",
-                 (u["id"], new_mid, a["kind"], a["filename"], a["mime"], a["size"], a["path"], a["meta"]))
+        # own file copy: independent 24h TTL, original expiry never breaks the forward
+        try:
+            blob = open(a["path"], "rb").read()
+        except Exception:
+            continue  # expired/missing media: forward text only
+        nid = exec_sql("INSERT INTO attachments(owner_id,message_id,kind,filename,mime,size,path,meta,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                       (u["id"], new_mid, a["kind"], a["filename"], a["mime"], a["size"], "", a["meta"], now_ms()))
+        npath = os.path.join(MEDIA_DIR, "%d_%s" % (nid, a["filename"]))
+        try:
+            with open(npath, "wb") as fh:
+                fh.write(blob)
+        except Exception:
+            exec_sql("DELETE FROM attachments WHERE id=?", (nid,))
+            continue
+        exec_sql("UPDATE attachments SET path=?, size=? WHERE id=?", (npath, len(blob), nid))
     for uid in chat_members(to):
         if uid != u["id"]:
             exec_sql("INSERT INTO message_state(message_id,user_id) VALUES(?,?)", (new_mid, uid))
@@ -377,6 +405,39 @@ def pin_message(handler, u, mid, b):
 
 
 # ---------------- upload / media ----------------
+def _delete_attachment(aid):
+    a = row("SELECT * FROM attachments WHERE id=?", (aid,))
+    if not a:
+        return
+    refs = row("SELECT COUNT(*) n FROM attachments WHERE path=? AND id!=?", (a["path"], aid))
+    if not refs or not refs["n"]:
+        try:
+            os.remove(a["path"])
+        except Exception:
+            pass
+    exec_sql("DELETE FROM attachments WHERE id=?", (aid,))
+
+
+def expire_media():
+    """Delete chat media older than UM_MEDIA_TTL hours (default 24).
+    Profile photos (referenced by users.avatar_img) are NEVER expired."""
+    try:
+        ttl_h = int(os.environ.get("UM_MEDIA_TTL", "24"))
+    except ValueError:
+        ttl_h = 24
+    if ttl_h <= 0:
+        return 0
+    cutoff = now_ms() - ttl_h * 3600_000
+    olds = rows("SELECT id FROM attachments WHERE created_at>0 AND created_at<?", (cutoff,))
+    n = 0
+    for o in olds:
+        if row("SELECT 1 FROM users WHERE avatar_img=?", (o["id"],)):
+            continue  # a profile photo: keep forever
+        _delete_attachment(o["id"])
+        n += 1
+    return n
+
+
 def upload(handler, u, files):
     if not files:
         return handler.j({"ok": False, "error": "nofile"}, 400)
@@ -396,8 +457,13 @@ def upload(handler, u, files):
         pass
     if meta.get("voice"):
         kind = "voice"
-    aid = exec_sql("INSERT INTO attachments(owner_id,message_id,kind,filename,mime,size,path,meta) VALUES(?,?,?,?,?,?,?,?)",
-                   (u["id"], None, kind, name, f["mime"], len(f["data"]), "", json.dumps(meta, ensure_ascii=False)))
+    if meta.get("avatar"):
+        if kind != "image":
+            return handler.j({"ok": False, "error": "type"}, 415)
+        if len(f["data"]) > util.MAX_AVATAR:
+            return handler.j({"ok": False, "error": "too_big"}, 413)
+    aid = exec_sql("INSERT INTO attachments(owner_id,message_id,kind,filename,mime,size,path,meta,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                   (u["id"], None, kind, name, f["mime"], len(f["data"]), "", json.dumps(meta, ensure_ascii=False), now_ms()))
     path = os.path.join(MEDIA_DIR, "%d_%s" % (aid, name))
     with open(path, "wb") as fh:
         fh.write(f["data"])
@@ -415,6 +481,13 @@ def media(handler, u, att_id):
         m = row("SELECT chat_id FROM messages WHERE id=?", (a["message_id"],))
         if m and row("SELECT 1 FROM chat_members WHERE chat_id=? AND user_id=?", (m["chat_id"], u["id"])):
             ok = True
+    if not ok:
+        # profile photo: visible to anyone passing the owner's priv_photo
+        trow = row("SELECT id FROM users WHERE avatar_img=?", (att_id,))
+        if trow:
+            t = user_by_id(trow["id"])
+            if t and priv_allow(settings_of(t["id"])["priv_photo"], u["id"], t["id"]):
+                ok = True
     if not ok:
         return handler.j({"ok": False}, 403)
     try:

@@ -55,7 +55,8 @@ unmute/
 
 ```sql
 users(id, username UNIQUE NOCASE, display_name, email UNIQUE NOCASE,
-      pass_hash, salt, avatar, cover, bio, role[user|admin],
+      pass_hash, salt, avatar, avatar_img→attachments (profile photo, never expires),
+      cover, bio, role[user|admin],
       status[active|banned|suspended], verified, created_at, last_seen)
 sessions(token PK, user_id→users, created_at, last_active, expires_at,
          remember, ua, ip)
@@ -65,7 +66,8 @@ messages(id, chat_id→chats, sender_id→users, type[text|image|video|file|audi
          text, reply_to→messages [thread], edited_at, deleted, deleted_me CSV, created_at)
 message_state(message_id, user_id, delivered_at, read_at)  -- PK(message_id,user_id): تیک‌ها
 reactions(message_id, user_id, emoji)                       -- PK هر سه‌تایی
-attachments(id, owner_id, message_id, kind, filename, mime, size, path, meta JSON)
+attachments(id, owner_id, message_id, kind, filename, mime, size, path, meta JSON,
+            created_at)  -- chat media auto-deleted after UM_MEDIA_TTL (24h); avatars exempt
 pins(chat_id, message_id, by_id, created_at)                -- PK(chat_id,message_id)
 contacts(owner_id, user_id, created_at)      blocked(user_id, blocked_id, created_at)
 reports(id, reporter_id, target_id, reason, details, status[open|resolved], created_at)
@@ -190,6 +192,7 @@ python3 /tmp/umtest.py   # در محیط توسعه موجود است؛ یا ه�
 | `UM_DATA` | `unmute/data` | مسیر دیتابیس `unmute.db` و پوشه `media/` |
 | `UM_DEV` | `0` | اگر `1`: فعال‌سازی `/api/dev/inbox` (دیدن کدهای ایمیل بدون SMTP) |
 | `UM_ADMIN_USERNAME` | — | اگر ست شود، کاربری با این یوزرنیم در ثبت‌نام `admin` می‌شود (نفر اول همیشه ادمین است) |
+| `UM_MEDIA_TTL` | `24` | عمر مدیای چت به ساعت؛ پس از آن فایل+رکورد پاک می‌شود (عکس پروفایل هرگز؛ `0` = بدون انقضا) |
 
 ## 7. دیپلوی روی VPS
 
