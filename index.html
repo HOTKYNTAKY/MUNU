@@ -132,7 +132,8 @@
   .media-ph{margin:4px 0;}
   .media-ph img,.media-ph video{max-width:100%;border-radius:10px;display:block;}
   .exp{display:block;font-size:10px;opacity:.7;margin-top:3px;}
-  .rply{border:none;background:transparent;font-size:10px;opacity:.6;cursor:pointer;padding:0;margin-right:6px;}
+  .rply{border:none;background:transparent;font-size:10px;opacity:.9;cursor:pointer;padding:0;margin-right:6px;}
+  .theirs .rply{color:#f2f6fa;}
   .reply-bar{
     display:flex;align-items:center;gap:8px;background:var(--acc-soft);border:1px solid var(--acc-line);
     border-radius:10px;padding:7px 10px;font-size:11px;color:var(--acc);margin-bottom:8px;
@@ -154,7 +155,7 @@
     display:flex;gap:6px;z-index:40;background:rgba(16,20,27,.92);
     border:1px solid var(--line);border-radius:999px;padding:6px;backdrop-filter:blur(8px);
   }
-  .bnav-btn{border:none;background:transparent;color:var(--mut);padding:9px 14px;border-radius:999px;font-weight:700;font-size:12px;cursor:pointer;position:relative;}
+  .bnav-btn{border:none;background:transparent;color:#f2f6fa;padding:9px 14px;border-radius:999px;font-weight:700;font-size:12px;cursor:pointer;position:relative;}
   .bnav-btn.active{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
   .badge{position:absolute;top:-5px;left:-5px;background:var(--red);color:#fff;border-radius:999px;font-size:10px;padding:2px 6px;}
 
@@ -552,10 +553,11 @@ function bubbleHTML(m){
   return `<div class="bubble ${mine?"mine":"theirs"}">${who}${q}${media}${m.text? m.text.replace(/</g,"&lt;") : ""}${exp}<span class="t">${fmtT(m.t)}${tick}</span>${rbtn}</div>`;
 }
 
+function toMe(m){ return m.to===USER || (USER==="__master__" && ADMIN_NAME && m.to===ADMIN_NAME); }
 function threadList(){
   if(ROLE==="admin"){
     if(!currentPeer) return [];
-    return ALLMSGS.filter(m=>m.to!=="*" && ((m.frm===currentPeer&&m.to===USER)||(m.frm===USER&&m.to===currentPeer)));
+    return ALLMSGS.filter(m=>m.to!=="*" && ((m.frm===currentPeer && toMe(m))||(m.frm===USER&&m.to===currentPeer)));
   }
   return ALLMSGS.filter(m=>m.to!=="*");
 }
@@ -568,7 +570,7 @@ async function renderThread(){
     const m=findMsg(+b.dataset.reply);
     if(!m) return;
     replyTo=m;
-    $("#reply-txt").textContent="↩ پاسخ به "+m.frm+": "+(m.text||"📎 رسانه").slice(0,60);
+    $("#reply-txt").textContent="↩ پاسخ به "+(m.dn||m.frm)+": "+(m.text||"📎 رسانه").slice(0,60);
     $("#reply-bar").classList.remove("hidden");
     $("#m-text").focus();
   });
@@ -607,12 +609,12 @@ async function pollMsgs(){
     const prev=lastMsgId;
     ALLMSGS=j.msgs||[];
     lastMsgId=Math.max(0,...ALLMSGS.map(m=>m.id));
-    const fresh=ALLMSGS.filter(m=>m.id>prev && m.frm!==USER && (m.to===USER||m.to==="*"));
+    const fresh=ALLMSGS.filter(m=>m.id>prev && m.frm!==USER && (toMe(m)||m.to==="*"));
     fresh.forEach(m=>{
       beep();
       notify((m.to==="*"? "📢 اطلاعیه جدید از ": "پیام جدید از ")+m.frm, (m.text||"📎 رسانه").slice(0,80));
     });
-    const unreadPriv=ALLMSGS.filter(m=>m.frm!==USER && m.to===USER && !m.read).length;
+    const unreadPriv=ALLMSGS.filter(m=>m.frm!==USER && toMe(m) && !m.read).length;
     const unreadAnn=ALLMSGS.filter(m=>m.frm!==USER && m.to==="*" && !m.read).length;
     const b1=$("#unread"), b2=$("#unread-ann");
     if(unreadPriv>0 && !msgViewOpen){ b1.textContent=unreadPriv; b1.classList.remove("hidden"); } else b1.classList.add("hidden");

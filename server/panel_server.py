@@ -341,8 +341,12 @@ class H(SimpleHTTPRequestHandler):
 
     def api_markread(self, u):
         with _lock:
+            targets = {u}
+            if u == MASTER_USER:
+                an = admin_name()
+                if an: targets.add(an)
             for m in MSGS:
-                if m["to"] == u and not m["read"]:
+                if m["to"] in targets and not m["read"]:
                     m["read"] = True
             _save_msgs()
         return self._json({"ok": True})
