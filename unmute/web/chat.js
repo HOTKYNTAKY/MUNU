@@ -339,11 +339,19 @@ async function doSend() {
   try {
     const r = await POST("/api/chats/" + S.curChat + "/messages", { text, reply_to: rp });
     if (!r.data.ok) throw r;
-    const i = S.msgs.findIndex(x => x.id === tmpId);
-    if (i > -1) S.msgs[i] = r.data.msg;
-    delete msgById[tmpId]; msgById[r.data.msg.id] = r.data.msg;
+    const m = r.data.msg;
+    S.msgs = S.msgs.filter(x => x.id !== tmpId);
+    delete msgById[tmpId];
+    if (!msgById[m.id]) { // WS echo may have beaten us: insert once, in id order
+      const at = S.msgs.findIndex(x => typeof x.id === "number" && x.id > m.id);
+      if (at > -1) S.msgs.splice(at, 0, m); else S.msgs.push(m);
+    } else { // echo already in list: just refresh it (ticks/state)
+      const j = S.msgs.findIndex(x => x.id === m.id);
+      if (j > -1) S.msgs[j] = m;
+    }
+    msgById[m.id] = m;
     renderMsgs();
-    const c = chatById(S.curChat); if (c) { c.last = r.data.msg; paintChatItems(paneQ()); }
+    const c = chatById(S.curChat); if (c) { c.last = m; paintChatItems(paneQ()); }
   } catch (e) {
     S.msgs = S.msgs.filter(x => x.id !== tmpId); delete msgById[tmpId];
     renderMsgs(); toast(errMsg(e), true);
@@ -390,7 +398,9 @@ function uploadAndSend(file, meta) {
       const r = await POST("/api/chats/" + S.curChat + "/messages", { text: "", atts: [j.att.id], reply_to: S.replyTo });
       S.replyTo = null; paintReplyBar();
       if (!r.data.ok) throw r;
-      S.msgs.push(r.data.msg); msgById[r.data.msg.id] = r.data.msg;
+      if (!msgById[r.data.msg.id]) S.msgs.push(r.data.msg); // WS echo may have beaten us
+      else { const j = S.msgs.findIndex(x => x.id === r.data.msg.id); if (j > -1) S.msgs[j] = r.data.msg; }
+      msgById[r.data.msg.id] = r.data.msg;
       renderMsgs();
       const cc = chatById(S.curChat); if (cc) { cc.last = r.data.msg; paintChatItems(paneQ()); }
     } catch (e) { toast(errMsg(e), true); }
@@ -658,6 +668,19 @@ function onWSMsg(m) {
     const i = S.msgs.findIndex(x => x.id === m.id); if (i > -1) S.msgs[i] = msgById[m.id];
     if (S.curChat === m.chat_id) renderMsgs();
     return;
+  }
+  if (m.sender_id === (S.me && S.me.id) && S.curChat === m.chat_id) {
+    // own message echo arrived before our POST returned: steal the pending tmp slot (no dup)
+    const ti = S.msgs.findIndex(x => typeof x.id === "string" && x.chat_id === m.chat_id && (x.text || "") === (m.text || ""));
+    if (ti > -1) {
+      const oldTmp = S.msgs[ti].id;
+      S.msgs[ti] = m;
+      delete msgById[oldTmp];
+      msgById[m.id] = m;
+      const cc = chatById(m.chat_id); if (cc) { cc.last = m; paintChatItems(paneQ()); }
+      renderMsgs();
+      return;
+    }
   }
   msgById[m.id] = m;
   const c = chatById(m.chat_id);
