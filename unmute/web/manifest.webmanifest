@@ -1,0 +1,14 @@
+{
+  "name": "Unmute",
+  "short_name": "Unmute",
+  "description": "Unmute — modern web messenger",
+  "start_url": "/#/chats",
+  "scope": "/",
+  "display": "standalone",
+  "dir": "auto",
+  "background_color": "#0f141b",
+  "theme_color": "#6d5ef1",
+  "icons": [
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

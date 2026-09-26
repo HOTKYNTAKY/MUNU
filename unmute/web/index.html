@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" data-theme="dark" data-accent="violet" data-fs="md">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Unmute — آنمیوت</title>
+<meta name="description" content="Unmute — modern web messenger">
+<meta name="theme-color" content="#6d5ef1">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/logo.svg">
+<link rel="stylesheet" href="/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="connbar"></div>
+<div id="updbar"><span id="updbar-tx"></span><span style="flex:1"></span><button class="btn sm" id="updbar-btn"></button></div>
+<div id="app" aria-live="polite"></div>
+<div id="toasts" role="status"></div>
+<div id="modal-root"></div>
+<div id="ctx-root"></div>
+<div id="gal-root"></div>
+<script src="/i18n.js"></script>
+<script src="/app.js"></script>
+<script src="/chat.js"></script>
+<script src="/views.js"></script>
+<script>boot();</script>
+</body>
+</html>
