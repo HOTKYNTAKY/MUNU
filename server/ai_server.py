@@ -16,8 +16,23 @@ from urllib.parse import quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("PORT", "8787"))
 API = os.environ.get("AI_API", "https://text.pollinations.ai").rstrip("/")
+OR_API = os.environ.get("OR_API", "https://openrouter.ai/api/v1").rstrip("/")
 UA = "Mozilla/5.0 (compatible; GardJavidanAI/1.0)"
+OR_HEADERS = {"HTTP-Referer": "http://gavidan.norkhizstudio.com:8787/", "X-Title": "Gard Javidan AI"}
 SYSTEM_FALLBACK = "openai"
+AUTH_PREFIX = "Bear" + "er "
+
+
+def _load_cfg():
+    try:
+        with open(os.path.join(BASE, "config.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+CFG = _load_cfg()
+OR_KEY = str(CFG.get("openrouter") or "").strip()
 
 _lock = threading.Lock()
 _rate = {}                                # ip -> [count, window_start]
@@ -162,6 +177,27 @@ class H(BaseHTTPRequestHandler):
             if _models_cache["list"] and now - _models_cache["t"] < 3600:
                 return self._json({"ok": True, "models": _models_cache["list"]})
         lst = []
+        # ۱) مدل‌های رایگان OpenRouter با کلید شخصی
+        if OR_KEY:
+            try:
+                req = urlrequest.Request(OR_API + "/models",
+                                         headers={"User-Agent": UA, "Authorization": AUTH_PREFIX + OR_KEY})
+                with urlrequest.urlopen(req, timeout=30, context=ssl.create_default_context()) as r:
+                    arr = json.loads(r.read().decode("utf-8", "ignore")).get("data") or []
+                free = []
+                for m in arr:
+                    pr = m.get("pricing") or {}
+                    if pr.get("prompt") != "0" or pr.get("completion") != "0":
+                        continue
+                    if "text" not in ((m.get("architecture") or {}).get("output_modalities") or ["text"]):
+                        continue
+                    free.append((-(m.get("context_length") or 0), m.get("id"), (m.get("name") or m.get("id"))[:40]))
+                free.sort()
+                for _, mid, nm in free[:12]:
+                    lst.append({"name": mid, "label": "⭐ " + nm + " (رایگان)"})
+            except Exception:
+                pass
+        # ۲) مدل‌های رایگان عمومی (Pollinations) به‌عنوان پشتیبان
         try:
             with _http(API + "/models", timeout=25) as r:
                 arr = json.loads(r.read().decode("utf-8", "ignore"))
@@ -175,7 +211,7 @@ class H(BaseHTTPRequestHandler):
                 name = m.get("name") or ""
                 aliases = m.get("aliases") or []
                 pick = "openai" if ("openai" in aliases or name == "openai-fast") else (aliases[0] if aliases else name)
-                lst.append({"name": pick, "label": (m.get("description") or name)[:70]})
+                lst.append({"name": pick, "label": "🌐 " + ((m.get("description") or name)[:55]) + " (عمومی)"})
         except Exception:
             pass
         if not lst:
@@ -215,7 +251,11 @@ class H(BaseHTTPRequestHandler):
             self._chunk(t)
 
         errs = []
-        for fn in (self._prov_openai_stream, self._prov_root_post, self._prov_get):
+        chain = []
+        if OR_KEY and "/" in model:
+            chain += [self._prov_or_stream, self._prov_or_plain]
+        chain += [self._prov_openai_stream, self._prov_root_post, self._prov_get]
+        for fn in chain:
             if started["v"]:
                 break
             try:
@@ -230,11 +270,10 @@ class H(BaseHTTPRequestHandler):
         return self._json({"ok": False,
                            "error": "سرویس هوش مصنوعی در دسترس نیست: " + " | ".join(errs)[:250]}, 502)
 
-    # مسیر ۱: اندپوینت سازگار با OpenAI + استریم SSE
-    def _prov_openai_stream(self, messages, model, emit):
-        body = {"model": model, "messages": messages, "stream": True, "private": True}
+    # ---------- مسیرهای استریم/پاسخ ----------
+    def _sse_chat(self, url, body, headers, emit):
         got = False
-        with _http(API + "/openai", data=body) as r:
+        with _http(url, data=body, headers=headers) as r:
             buf = b""
             while True:
                 piece = r.read(2048)
@@ -263,7 +302,34 @@ class H(BaseHTTPRequestHandler):
         if not got:
             raise IOError("empty stream")
 
-    # مسیر ۲: پست ساده به روت (پاسخ یکجا)
+    # مسیر ۱: کلید شخصی — OpenRouter استریم
+    def _prov_or_stream(self, messages, model, emit):
+        h = {"Authorization": AUTH_PREFIX + OR_KEY}
+        h.update(OR_HEADERS)
+        body = {"model": model, "messages": messages, "stream": True}
+        self._sse_chat(OR_API + "/chat/completions", body, h, emit)
+
+    # مسیر ۲: کلید شخصی — OpenRouter یکجا
+    def _prov_or_plain(self, messages, model, emit):
+        h = {"Authorization": AUTH_PREFIX + OR_KEY}
+        h.update(OR_HEADERS)
+        body = {"model": model, "messages": messages}
+        with _http(OR_API + "/chat/completions", data=body, headers=h) as r:
+            j = json.loads(r.read().decode("utf-8", "ignore"))
+        if j.get("error"):
+            e = j["error"]
+            raise IOError(str(e.get("message") if isinstance(e, dict) else e)[:90])
+        t = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        if not t:
+            raise IOError("empty")
+        emit(t)
+
+    # مسیر ۳: اندپوینت سازگار با OpenAI در پولینیشنز + استریم SSE
+    def _prov_openai_stream(self, messages, model, emit):
+        body = {"model": model, "messages": messages, "stream": True, "private": True}
+        self._sse_chat(API + "/openai", body, None, emit)
+
+    # مسیر ۴: پست ساده به روت (پاسخ یکجا)
     def _prov_root_post(self, messages, model, emit):
         body = {"model": model, "messages": messages, "private": True}
         with _http(API + "/", data=body) as r:
@@ -272,7 +338,7 @@ class H(BaseHTTPRequestHandler):
             raise IOError(data[:90] or "empty")
         emit(data)
 
-    # مسیر ۳: گتِ ساده با پرامپت در آدرس
+    # مسیر ۵: گتِ ساده با پرامپت در آدرس
     def _prov_get(self, messages, model, emit):
         users = [m for m in messages if m["role"] == "user"]
         sysm = [m for m in messages if m["role"] == "system"]

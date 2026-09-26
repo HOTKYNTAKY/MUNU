@@ -316,7 +316,7 @@ async function streamDirect(messages,onDelta,signal){
   const r=await fetch("https://text.pollinations.ai/openai",{
     method:"POST", signal, referrerPolicy:"no-referrer",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:MODEL, messages:trimHist(messages), stream:true})
+    body:JSON.stringify({model:(MODEL.indexOf("/")>=0? "openai":MODEL), messages:trimHist(messages), stream:true})
   });
   if(!r.ok) throw new Error("HTTP "+r.status);
   const rd=r.body.getReader(), dec=new TextDecoder();
