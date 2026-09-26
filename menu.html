@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="fa" dir="rtl"> 
+<head> 
+  <meta charset="UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>هات کنتاکی | منوی آنلاین حرفه‌ای</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --orange:#ff6b2c;
+      --orange-dark:#e85d1f;
+      --orange-light:#fff1e6;
+      --dark:#1a1a1a;
+      --gray:#6b7280;
+      --border:#fecca8;
+    }
+    *{ box-sizing:border-box; margin:0; padding:0; }
+    body{
+      font-family:'Vazirmatn','Segoe UI',Tahoma,sans-serif;
+      background: #fffaf5;
+      background-image: 
+        radial-gradient(circle at 20% 30%, #ffedd5 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, #fed7aa 0%, transparent 50%);
+      color: var(--dark);
+      min-height:100vh;
+      -webkit-font-smoothing:antialiased;
+    }
+    .top-notice{
+      background: linear-gradient(90deg, #111 0%, #2a2a2a 100%);
+      color:#ffd8b5;
+      text-align:center;
+      padding:10px;
+      font-size:12.5px;
+      letter-spacing:.3px;
+    }
+    .top-notice span{ color:white; font-weight:800; }
+    .container{
+      width: 92%;
+      max-width: 760px;
+      margin: 18px auto 40px;
+      background: #ffffff;
+      border-radius: 28px;
+      box-shadow: 
+        0 20px 60px rgba(232,93,31,0.12),
+        0 2px 0 1px rgba(255,107,44,0.06) inset;
+      overflow:hidden;
+      border:1px solid rgba(255,107,44,0.08);
+    }
+    /* Header */
+    .hero{
+      background: linear-gradient(135deg, #ff6b2c 0%, #ff3d1a 60%, #d61f00 100%);
+      padding: 36px 28px 28px;
+      position:relative;
+      overflow:hidden;
+      color:white;
+    }
+    .hero::after{
+      content:"";
+      position:absolute;
+      top:-40%;
+      right:-20%;
+      width:380px;
+      height:380px;
+      background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%);
+      border-radius:50%;
+      pointer-events:none;
+    }
+    .hero-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      position:relative;
+      z-index:2;
+    }
+    .logo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .logo-icon{
+      width:52px;
+      height:52px;
+      background: white;
+      border-radius:16px;
+      display:grid;
+      place-items:center;
+      font-size:26px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      transform: rotate(-6deg);
+    }
+    .logo-text h1{
+      font-size:26px;
+      font-weight:800;
+      line-height:1;
+      letter-spacing:-0.5px;
+    }
+    .logo-text p{
+      font-size:12px;
+      opacity:.9;
+      margin-top:5px;
+      font-weight:400;
+      letter-spacing:.5px;
+    }
+    /* Language Bar */
+    .language-bar{
+      display:flex;
+      gap:8px;
+      background: rgba(0,0,0,0.18);
+      backdrop-filter: blur(10px);
+      padding:6px;
+      border-radius: 100px;
+      border:1px solid rgba(255,255,255,0.15);
+    }
+    .lang-btn{
+      padding: 6px 16px;
+      border: 1px solid transparent;
+      border-radius: 100px;
+      background: transparent;
+      color: rgba(255,255,255,0.9);
+      cursor: pointer;
+      font-weight:700;
+      font-size:12.5px;
+      font-family:inherit;
+      transition:.25s cubic-bezier(.4,0,.2,1);
+    }
+    .lang-btn:hover{ background: rgba(255,255,255,0.12); }
+    .lang-btn.active{
+      background: white;
+      color: var(--orange-dark);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    /* Content */
+    .content-padding{ padding: 28px 26px; }
+    .badge-delivery{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      background: var(--orange-light);
+      border:1px solid var(--border);
+      color: var(--orange-dark);
+      padding:8px 14px;
+      border-radius:100px;
+      font-size:12px;
+      font-weight:700;
+      margin-bottom:22px;
+    }
+    .badge-delivery .dot{
+      width:8px; height:8px; background:#22c55e; border-radius:50%;
+      box-shadow:0 0 0 4px rgba(34,197,94,0.2);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(34,197,94,.4)} 70%{box-shadow:0 0 0 6px rgba(34,197,94,0)} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0)} }
+    
+    .category-header{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-top:32px;
+      margin-bottom:14px;
+    }
+    .category-header:first-of-type{ margin-top:8px; }
+    .cat-icon{
+      width:40px; height:40px;
+      background: linear-gradient(135deg, #ffedd5, #fed7aa);
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      font-size:18px;
+      border:1px solid var(--border);
+    }
+    .category-header h2{
+      font-size:19px;
+      font-weight:800;
+      color: var(--dark);
+      letter-spacing:-0.3px;
+      border:none;
+      padding:0;
+      margin:0;
+    }
+    .cat-line{ flex:1; height:1px; background: linear-gradient(90deg, #fed7aa, transparent); margin-right:10px; }
+    .ltr-mode .cat-line{ background: linear-gradient(90deg, transparent, #fed7aa); margin-left:10px; margin-right:0; }
+
+    .grid{ display:flex; flex-direction:column; gap:0; }
+    .item{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:16px 14px;
+      border-radius:16px;
+      border:1px solid transparent;
+      transition: all .22s ease;
+      position:relative;
+      gap:12px;
+    }
+    .item:hover{
+      background: #fff7ed;
+      border-color: #ffedd5;
+      transform: translateY(-1px);
+      box-shadow:0 6px 18px rgba(255,107,44,0.08);
+    }
+    .item-info{ display:flex; align-items:center; gap:13px; flex:1; }
+    .item-emoji{
+      width:48px; height:48px;
+      background:#fff;
+      border:1px solid #f5f5f5;
+      box-shadow:0 4px 10px rgba(0,0,0,0.05);
+      border-radius:13px;
+      display:grid;
+      place-items:center;
+      font-size:22px;
+      flex-shrink:0;
+    }
+    .item-text{ display:flex; flex-direction:column; }
+    .item-title{
+      font-size:15.5px;
+      font-weight:700;
+      color:#1f2937;
+      line-height:1.3;
+    }
+    .item-sub{
+      font-size:11.5px;
+      color:var(--gray);
+      margin-top:3px;
+      font-weight:400;
+    }
+    .price-wrap{
+      display:flex;
+      flex-direction:row-reverse;
+      align-items:center;
+      gap:6px;
+      background: #111;
+      color:white;
+      padding:8px 12px;
+      border-radius:100px;
+      font-weight:800;
+      font-size:14px;
+      white-space:nowrap;
+      box-shadow:0 4px 12px rgba(0,0,0,0.12);
+      flex-shrink:0;
+    }
+    .price-wrap span:last-child{
+      background: var(--orange);
+      color:white;
+      width:22px; height:22px;
+      display:grid; place-items:center;
+      border-radius:50%;
+      font-size:11px;
+      font-weight:800;
+    }
+    .ltr-mode .price-wrap{ flex-direction:row; }
+    .popular{
+      position:absolute;
+      top:6px;
+      left:14px;
+      background:#22c55e;
+      color:white;
+      font-size:9px;
+      font-weight:800;
+      padding:3px 7px;
+      border-radius:100px;
+      letter-spacing:.4px;
+    }
+    .ltr-mode .popular{ left:auto; right:14px; }
+    /* Footer */
+    .footer{
+      background:#0f0f0f;
+      padding:24px 26px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:18px;
+      color:#a1a1aa;
+      font-size:12.5px;
+    }
+    .footer b{ color:white; display:block; margin-bottom:6px; font-size:13px; }
+    .cta{
+      grid-column:1 / -1;
+      display:flex;
+      gap:10px;
+      margin-top:6px;
+    }
+    .cta a{
+      flex:1;
+      text-align:center;
+      padding:12px;
+      border-radius:14px;
+      font-weight:800;
+      text-decoration:none;
+      font-size:13.5px;
+      transition:.2s;
+    }
+    .cta .primary{ background:var(--orange); color:white; }
+    .cta .primary:hover{ background:var(--orange-dark); transform:translateY(-1px); }
+    .cta .secondary{ background:#1f1f1f; color:white; border:1px solid #2a2a2a; }
+    .cta .secondary:hover{ background:#262626; }
+    @media(max-width:520px){
+      .content-padding{ padding:22px 16px; }
+      .hero{ padding:28px 20px 22px; }
+      .footer{ grid-template-columns:1fr; }
+    }
+  </style> 
+</head> 
+<body> 
+
+  <div class="top-notice">🔥 ارسال رایگان برای سفارش بالای <span>۱ میلیون تومان</span> — امروز تا ساعت ۱ شب باز هستیم</div>
+
+  <div class="container" id="main-container"> 
+   <div class="hero">
+     <div class="hero-top">
+       <div class="logo">
+         <div class="logo-icon">🍗</div>
+         <div class="logo-text">
+           <h1 id="title">هات کنتاکی</h1>
+           <p id="subtitle">سوخاری اصیل آمریکایی • از ۱۳۹۸</p>
+         </div>
+       </div>
+       <div class="language-bar"> 
+         <button class="lang-btn active" onclick="changeLang('fa', this)">فارسی</button> 
+         <button class="lang-btn" onclick="changeLang('en', this)">EN</button> 
+         <button class="lang-btn" onclick="changeLang('ar', this)">AR</button> 
+       </div> 
+     </div>
+   </div>
+
+   <div class="content-padding">
+     <div class="badge-delivery"><span class="dot"></span><span id="openBadge">الان بازیم • آماده سفارش</span></div>
+
+     <div class="category-header">
+       <div class="cat-icon">🍗</div>
+       <h2 id="main">غذاهای اصلی</h2>
+       <div class="cat-line"></div>
+     </div>
+     <div class="grid">
+       <div class="item"> 
+         <div class="item-info">
+           <div class="item-emoji">🍗</div>
+           <div class="item-text">
+             <span class="item-title" id="m1">سوخاری ۵ تکه</span>
+             <span class="item-sub" id="m1s">ران + سینه + بال • سس مخصوص</span>
+           </div>
+         </div>
+         <div class="price-wrap"><span>699,000</span><span>T</span></div> 
+         <span class="popular" id="pop1">پرفروش</span>
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🍖</div><div class="item-text"><span class="item-title" id="m2">سوخاری ۳ تکه</span><span class="item-sub" id="m2s">اقتصادی و خوشمزه</span></div></div>
+         <div class="price-wrap"><span>489,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🍖</div><div class="item-text"><span class="item-title" id="m3">سوخاری ۲ تکه</span><span class="item-sub" id="m3s">یک نفره</span></div></div>
+         <div class="price-wrap"><span>379,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🔥</div><div class="item-text"><span class="item-title" id="m4">سوخاری میکس</span><span class="item-sub" id="m4s">میکس سوخاری و استریپس</span></div></div>
+         <div class="price-wrap"><span>799,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🥓</div><div class="item-text"><span class="item-title" id="m5">فیله استریپس ۵ تکه</span><span class="item-sub" id="m5s">فیله مرغ سوخاری ترد</span></div></div>
+         <div class="price-wrap"><span>699,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🥓</div><div class="item-text"><span class="item-title" id="m6">فیله استریپس ۳ تکه</span><span class="item-sub" id="m6s">محبوب بچه‌ها</span></div></div>
+         <div class="price-wrap"><span>489,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🥓</div><div class="item-text"><span class="item-title" id="m14">فیله استریپس ۲ تکه</span><span class="item-sub" id="m14s">سایز کوچک</span></div></div>
+         <div class="price-wrap"><span>379,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🍗</div><div class="item-text"><span class="item-title" id="m7">کتف و بال سوخاری</span><span class="item-sub" id="m7s">۸ تکه ترد و آبدار</span></div></div>
+         <div class="price-wrap"><span>439,000</span><span>T</span></div> 
+       </div> 
+       <div class="item"> 
+         <div class="item-info"><div class="item-emoji">🍔</div><div class="item-text"><span class="item-title" id="m8">ساندویچ چیکن فیله</span><span class="item-sub" id="m8s">نان بریوش + سس مخصوص</span></div></div>
+         <div class="price-wrap"><span>339,000</span><span>T</span></div> 
+       </div> 
+     </div>
+
+     <div class="category-header">
+       <div class="cat-icon">🥗</div>
+       <h2 id="starters">پیش‌غذا و دورچین</h2>
+       <div class="cat-line"></div>
+     </div>
+     <div class="grid">
+       <div class="item"> <div class="item-info"><div class="item-emoji">🧀</div><div class="item-text"><span class="item-title" id="m11">توپک پنیری</span><span class="item-sub" id="m11s">۴ عدد با پنیر کش‌دار</span></div></div><div class="price-wrap"><span>299,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🌭</div><div class="item-text"><span class="item-title" id="m13">کوکتل سوخاری</span><span class="item-sub" id="m13s">۶ عدد پنیری</span></div></div><div class="price-wrap"><span>299,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🥗</div><div class="item-text"><span class="item-title" id="s1">سالاد سزار</span><span class="item-sub" id="s1s">مرغ گریل + سس سزار</span></div></div><div class="price-wrap"><span>275,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🥬</div><div class="item-text"><span class="item-title" id="s2">سالاد کلم</span><span class="item-sub" id="s2s">کلم سفید و هویج تازه</span></div></div><div class="price-wrap"><span>45,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🧅</div><div class="item-text"><span class="item-title" id="s3">پیاز سوخاری</span><span class="item-sub" id="s3s">حلقه‌ای ترد</span></div></div><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🍄</div><div class="item-text"><span class="item-title" id="s4">قارچ سوخاری</span><span class="item-sub" id="s4s">قارچ دکمه‌ای سوخاری</span></div></div><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🍄‍🧅</div><div class="item-text"><span class="item-title" id="s5">میکس قارچ و پیاز</span><span class="item-sub" id="s5s">ترکیب هیجان‌انگیز</span></div></div><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
+       <div class="item"> <div class="item-info"><div class="item-emoji">🍟</div><div class="item-text"><span class="item-title" id="s6">سیب‌زمینی سرخ‌کرده</span><span class="item-sub" id="s6s">سیب‌زمینی تازه + سس کچاپ</span></div></div><div class="price-wrap"><span>219,000</span><span>T</span></div> </div> 
+     </div>
+   </div>
+
+   <div class="footer">
+     <div><b id="f1t">📍 آدرس</b><span id="f1d">شعبه اصلی، بلوار اصلی</span></div>
+     <div><b id="f2t">⏰ ساعات کاری</b><span id="f2d">هر روز ۱۱:۳۰ تا ۱ شب</span></div>
+     <div class="cta">
+       <a href="tel:+989000000000" class="primary" id="cta1">📞 تماس و سفارش</a>
+       <a href="#" class="secondary" id="cta2">📸 اینستاگرام</a>
+     </div>
+   </div>
+  </div> 
+
+  <script>
+    const langData = {
+      fa: {
+        title: "هات کنتاکی", subtitle: "سوخاری اصیل آمریکایی • از ۱۳۹۸",
+        main: "غذاهای اصلی", starters: "پیش‌غذا و دورچین",
+        openBadge:"الان بازیم • آماده سفارش",
+        m1: "سوخاری ۵ تکه", m1s:"ران + سینه + بال • سس مخصوص",
+        m2: "سوخاری ۳ تکه", m2s:"اقتصادی و خوشمزه",
+        m3: "سوخاری ۲ تکه", m3s:"یک نفره",
+        m4: "سوخاری میکس", m4s:"میکس سوخاری و استریپس",
+        m5: "فیله استریپس ۵ تکه", m5s:"فیله مرغ سوخاری ترد",
+        m6: "فیله استریپس ۳ تکه", m6s:"محبوب بچه‌ها",
+        m14: "فیله استریپس ۲ تکه", m14s:"سایز کوچک",
+        m7: "کتف و بال سوخاری", m7s:"۸ تکه ترد و آبدار",
+        m8: "ساندویچ چیکن فیله", m8s:"نان بریوش + سس مخصوص",
+        m11: "توپک پنیری", m11s:"۴ عدد با پنیر کش‌دار",
+        m13: "کوکتل سوخاری", m13s:"۶ عدد پنیری",
+        s1: "سالاد سزار", s1s:"مرغ گریل + سس سزار",
+        s2: "سالاد کلم", s2s:"کلم سفید و هویج تازه",
+        s3: "پیاز سوخاری", s3s:"حلقه‌ای ترد",
+        s4: "قارچ سوخاری", s4s:"قارچ دکمه‌ای سوخاری",
+        s5: "میکس قارچ و پیاز", s5s:"ترکیب هیجان‌انگیز",
+        s6: "سیب‌زمینی سرخ‌کرده", s6s:"سیب‌زمینی تازه + سس کچاپ",
+        pop1:"پرفروش",
+        f1t:"📍 آدرس", f1d:"شعبه اصلی، بلوار اصلی",
+        f2t:"⏰ ساعات کاری", f2d:"هر روز ۱۱:۳۰ تا ۱ شب",
+        cta1:"📞 تماس و سفارش", cta2:"📸 اینستاگرام",
+      },
+      en: {
+        title: "HOT KENTUCKY", subtitle:"Authentic American Fried Chicken • Since 2019",
+        main: "Main Dishes", starters: "Sides & Starters",
+        openBadge:"Open Now • Ready to order",
+        m1: "5pc Fried Chicken", m1s:"Thigh + Breast + Wing • Special sauce",
+        m2: "3pc Fried Chicken", m2s:"Value & tasty",
+        m3: "2pc Fried Chicken", m3s:"Single portion",
+        m4: "Mixed Fried Chicken", m4s:"Mix of chicken & strips",
+        m5: "5pc Chicken Strips", m5s:"Crispy chicken filet",
+        m6: "3pc Chicken Strips", m6s:"Kids favorite",
+        m14: "2pc Chicken Strips", m14s:"Small size",
+        m7: "Fried Wings", m7s:"8 pcs crispy & juicy",
+        m8: "Chicken Filet Sandwich", m8s:"Brioche + special sauce",
+        m11: "Cheese Balls", m11s:"4 pcs cheesy",
+        m13: "Fried Cocktail", m13s:"6 pcs cheesy",
+        s1: "Caesar Salad", s1s:"Grilled chicken + Caesar sauce",
+        s2: "Cabbage Salad", s2s:"Fresh white cabbage & carrot",
+        s3: "Fried Onion", s3s:"Crispy rings",
+        s4: "Fried Mushroom", s4s:"Button mushroom fried",
+        s5: "Mushroom & Onion Mix", s5s:"Exciting combo",
+        s6: "French Fries", s6s:"Fresh potato + ketchup",
+        pop1:"BESTSELLER",
+        f1t:"📍 Address", f1d:"Main Branch, Main Blvd",
+        f2t:"⏰ Hours", f2d:"Everyday 11:30 AM - 1 AM",
+        cta1:"📞 Call to Order", cta2:"📸 Instagram",
+      },
+      ar: {
+        title: "كنتاكي الحار", subtitle:"دجاج مقلي أمريكي أصيل • منذ ٢٠١٩",
+        main: "الأطباق الرئيسية", starters: "المقبلات والجانبية",
+        openBadge:"مفتوح الآن • جاهز للطلب",
+        m1: "دجاج مقلي ٥ قطع", m1s:"فخذ + صدر + جناح • صلصة خاصة",
+        m2: "دجاج مقلي ٣ قطع", m2s:"اقتصادي ولذيذ",
+        m3: "دجاج مقلي ٢ قطع", m3s:"وجبة فردية",
+        m4: "دجاج مقلي مشكل", m4s:"مكس دجاج وستريبس",
+        m5: "شرائح دجاج ٥ قطع", m5s:"فيليه دجاج مقرمش",
+        m6: "شرائح دجاج ٣ قطع", m6s:"المفضل للأطفال",
+        m14: "شرائح دجاج ٢ قطع", m14s:"حجم صغير",
+        m7: "أجنحة مقلية", m7s:"٨ قطع مقرمشة",
+        m8: "ساندويتش دجاج فيليه", m8s:"خبز بريوش + صلصة خاصة",
+        m11: "كرات الجبنة", m11s:"٤ قطع بالجبن",
+        m13: "سجق مقلي", m13s:"٦ قطع بالجبن",
+        s1: "سلطة سيزر", s1s:"دجاج مشوي + صلصة سيزر",
+        s2: "سلطة ملفوف", s2s:"ملفوف أبيض وجزر طازج",
+        s3: "بصل مقلي", s3s:"حلقات مقرمشة",
+        s4: "فطر مقلي", s4s:"فطر مقلي",
+        s5: "خليط فطر وبصل", s5s:"مزيج مثير",
+        s6: "بطاطا مقلية", s6s:"بطاطا طازجة + كاتشب",
+        pop1:"الأكثر مبيعاً",
+        f1t:"📍 العنوان", f1d:"الفرع الرئيسي، الشارع الرئيسي",
+        f2t:"⏰ ساعات العمل", f2d:"يوميا ١١:٣٠ ص - ١ ص",
+        cta1:"📞 اتصل للطلب", cta2:"📸 انستغرام",
+      }
+    };
+
+    function changeLang(lang, btn) {
+      const data = langData[lang];
+      for (let key in data) {
+        let el = document.getElementById(key);
+        if(el) el.textContent = data[key];
+      }
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const container = document.getElementById('main-container');
+      if(lang === 'en') {
+        document.body.dir = 'ltr';
+        container.classList.add('ltr-mode');
+      } else {
+        document.body.dir = 'rtl';
+        container.classList.remove('ltr-mode');
+      }
+      localStorage.setItem('hotk-lang', lang);
+    }
+    // restore lang
+    const saved = localStorage.getItem('hotk-lang');
+    if(saved && saved!=='fa'){
+      const btn = document.querySelector(`.lang-btn[onclick*=\"'${saved}'\"]`);
+      if(btn) changeLang(saved, btn);
+    }
+  </script> 
+</body>
+</html>
