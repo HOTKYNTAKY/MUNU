@@ -1,162 +1,585 @@
 <!doctype html>
-<html lang="fa" dir="rtl"> 
- <head> 
-  <meta charset="UTF-8"> 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>منو حرفه‌ای هات کنتاکی</title> 
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 0;
-      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-      background: linear-gradient(135deg, #fff5eb 0%, #ffe4d1 100%);
-      color: #2d3436;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .container {
-      width: 95%;
-      max-width: 600px;
-      margin: 20px auto;
-      background: #ffffff;
-      padding: 0 0 30px 0;
-      border-radius: 25px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-    
-    .language-bar {
-      background: #fdf2e9;
-      padding: 12px;
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      border-bottom: 1px solid #fed7aa;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .lang-btn {
-      padding: 6px 15px;
-      border: 1px solid #ff944d;
-      border-radius: 20px;
-      background: white;
-      color: #d35400;
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 13px;
-      transition: 0.3s;
-    }
-    .lang-btn:hover, .lang-btn.active {
-      background: #ff944d;
-      color: white;
-    }
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>پنل امن</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<style>
+  :root{
+    --bg:#0b0f14; --card:#141b24; --card2:#0f151d; --line:#1f2a37;
+    --tx:#e6edf3; --mut:#8b98a5; --acc:#22c55e; --acc2:#16a34a;
+    --red:#ef4444; --amber:#f59e0b; --rad:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; min-height:100vh; color:var(--tx);
+    font-family:Vazirmatn,'Segoe UI',Tahoma,sans-serif;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(34,197,94,.10), transparent 60%),
+      radial-gradient(700px 400px at 10% 110%, rgba(34,197,94,.07), transparent 60%),
+      var(--bg);
+  }
+  .hidden{display:none !important;}
+  button{font-family:inherit;}
 
-    .content-padding { padding: 0 25px; }
+  /* ---------- صفحه قفل ---------- */
+  .lock{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .lock-card{
+    width:100%; max-width:360px; background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line); border-radius:22px; padding:34px 26px; text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .shield{
+    width:70px;height:70px;margin:0 auto 14px;border-radius:20px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.35);
+    box-shadow:0 0 30px rgba(34,197,94,.25) inset;
+  }
+  .shield svg{width:34px;height:34px;stroke:var(--acc);}
+  .lock-card h1{margin:4px 0 4px;font-size:20px;}
+  .lock-card p{margin:0 0 18px;color:var(--mut);font-size:13px;}
+  .pin-in{
+    width:100%; text-align:center; letter-spacing:8px; font-size:20px;
+    background:#0a0f15; color:var(--tx); border:1px solid var(--line);
+    border-radius:12px; padding:12px; outline:none;
+  }
+  .pin-in:focus{border-color:var(--acc);}
+  .btn{
+    border:none; cursor:pointer; border-radius:12px; padding:12px 18px;
+    font-weight:700; font-size:14px; transition:.2s;
+  }
+  .btn-acc{background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#04120a; width:100%; margin-top:12px;}
+  .btn-acc:hover{filter:brightness(1.1);}
+  .btn-ghost{background:transparent;color:var(--mut);border:1px solid var(--line);}
+  .btn-ghost:hover{color:var(--tx);border-color:var(--mut);}
+  .lock-err{color:var(--red);font-size:12px;min-height:18px;margin:10px 0 0;}
 
-    h1 { text-align: center; color: #e67e22; margin: 25px 0; font-size: 28px; }
-    h2 { 
-      font-size: 20px; margin-top: 30px; color: #d35400; 
-      border-bottom: 2px solid #fed7aa; padding-bottom: 8px;
-    }
-    .item { 
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 15px 0; border-bottom: 1px dashed #eee;
-    }
-    .price-wrap {
-      display: flex;
-      flex-direction: row-reverse;
-      gap: 5px;
-      font-weight: bold;
-      font-size: 17px;
-    }
-    .ltr-mode .price-wrap { flex-direction: row; }
-  </style> 
- </head> 
- <body> 
+  /* ---------- پنل ---------- */
+  .app{max-width:860px;margin:0 auto;padding:18px 16px 60px;}
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:14px 16px; background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line); border-radius:var(--rad); margin-bottom:14px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mini-shield{
+    width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.35);
+  }
+  .brand .mini-shield svg{width:20px;height:20px;stroke:var(--acc);}
+  .brand b{font-size:15px;display:block;}
+  .brand small{color:var(--mut);font-size:11px;display:block;margin-top:2px;}
+  .head-actions{display:flex;gap:8px;}
+  .icon-btn{
+    width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    background:var(--card2);border:1px solid var(--line);color:var(--mut);cursor:pointer;transition:.2s;
+  }
+  .icon-btn:hover{color:var(--tx);border-color:var(--mut);}
+  .icon-btn svg{width:17px;height:17px;}
 
-  <div class="container" id="main-container"> 
-   <div class="language-bar"> 
-     <button class="lang-btn active" onclick="changeLang('fa', this)">فارسی</button> 
-     <button class="lang-btn" onclick="changeLang('en', this)">English</button> 
-     <button class="lang-btn" onclick="changeLang('ar', this)">عربی</button> 
-   </div> 
+  .status{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);
+    background:var(--card2);border:1px solid var(--line);border-radius:12px;
+    padding:9px 14px;margin-bottom:16px;
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .dot.ok{background:var(--acc);box-shadow:0 0 8px var(--acc);}
+  .dot.err{background:var(--red);box-shadow:0 0 8px var(--red);}
 
-   <div class="content-padding">
-     <h1 id="title">هات کنتاکی</h1> 
-     
-     <h2 id="main">غذاهای اصلی</h2> 
-     <div class="item"> <span id="m1">سوخاری ۵ تکه</span><div class="price-wrap"><span>699,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m2">سوخاری ۳ تکه</span><div class="price-wrap"><span>489,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m3">سوخاری ۲ تکه</span><div class="price-wrap"><span>379,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m4">سوخاری میکس</span><div class="price-wrap"><span>799,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m5">فیله استریپس ۵ تکه</span><div class="price-wrap"><span>699,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m6">فیله استریپس ۳ تکه</span><div class="price-wrap"><span>489,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m14">فیله استریپس ۲ تکه</span><div class="price-wrap"><span>379,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m7">کتف و بال سوخاری</span><div class="price-wrap"><span>439,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m8">ساندویچ چیکن فیله</span><div class="price-wrap"><span>339,000</span><span>T</span></div> </div> 
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:14px;}
+  .card{
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line); border-radius:var(--rad); padding:18px;
+    display:flex; flex-direction:column; gap:12px; transition:.2s;
+  }
+  .card:hover{border-color:#2c3b4d; transform:translateY(-2px);}
+  .card-head{display:flex;align-items:center;gap:10px;}
+  .card-ico{
+    width:40px;height:40px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.3);
+  }
+  .card-ico svg{width:19px;height:19px;stroke:var(--acc);}
+  .card-head b{font-size:14px;}
+  .card-head small{display:block;color:var(--mut);font-size:11px;margin-top:2px;}
 
-     <h2 id="starters">پیش‌غذا</h2> 
-     <div class="item"> <span id="m11">توپک پنیری</span><div class="price-wrap"><span>299,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="m13">کوکتل سوخاری</span><div class="price-wrap"><span>299,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s1">سالاد سزار</span><div class="price-wrap"><span>275,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s2">سالاد کلم</span><div class="price-wrap"><span>45,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s3">پیاز سوخاری</span><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s4">قارچ سوخاری</span><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s5">میکس قارچ و پیاز</span><div class="price-wrap"><span>239,000</span><span>T</span></div> </div> 
-     <div class="item"> <span id="s6">سیب‌زمینی سرخ‌کرده</span><div class="price-wrap"><span>219,000</span><span>T</span></div> </div> 
-   </div>
-  </div> 
+  textarea,.text-in{
+    width:100%; background:#0a0f15; color:var(--tx); border:1px solid var(--line);
+    border-radius:11px; padding:10px 12px; font-family:inherit; font-size:13px; outline:none; resize:vertical;
+  }
+  textarea:focus,.text-in:focus{border-color:var(--acc);}
+  textarea{min-height:74px;}
+  .row{display:flex;gap:8px;}
+  .row .btn{flex:1;padding:10px 12px;font-size:13px;}
+  .btn-send{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04120a;}
+  .btn-send:hover{filter:brightness(1.1);}
+  .btn-send:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
+  .btn-dim{background:#18222e;color:var(--tx);border:1px solid var(--line);}
+  .btn-dim:hover{border-color:var(--mut);}
+  .btn-danger{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.35);}
 
-  <script>
-    const langData = {
-      fa: {
-        title: "هات کنتاکی", main: "غذاهای اصلی", starters: "پیش‌غذا",
-        m1: "سوخاری ۵ تکه", m2: "سوخاری ۳ تکه", m3: "سوخاری ۲ تکه", m4: "سوخاری میکس",
-        m5: "فیله استریپس ۵ تکه", m6: "فیله استریپس ۳ تکه", m14: "فیله استریپس ۲ تکه",
-        m7: "کتف و بال سوخاری", m8: "ساندویچ چیکن فیله", m11: "توپک پنیری", m13: "کوکتل سوخاری",
-        s1: "سالاد سزار", s2: "سالاد کلم", s3: "پیاز سوخاری", s4: "قارچ سوخاری",
-        s5: "میکس قارچ و پیاز", s6: "سیب‌زمینی سرخ‌کرده"
-      },
-      en: {
-        title: "Hot Kentucky", main: "Main Dishes", starters: "Starters",
-        m1: "5pc Fried Chicken", m2: "3pc Fried Chicken", m3: "2pc Fried Chicken", m4: "Mixed Fried Chicken",
-        m5: "5pc Strips", m6: "3pc Strips", m14: "2pc Strips",
-        m7: "Fried Wings", m8: "Chicken Filet Sandwich", m11: "Cheese Balls", m13: "Fried Cocktail",
-        s1: "Caesar Salad", s2: "Cabbage Salad", s3: "Fried Onion", s4: "Fried Mushroom",
-        s5: "Mushroom & Onion Mix", s6: "French Fries"
-      },
-      ar: {
-        title: "كنتاكي الحار", main: "الأطباق الرئيسية", starters: "المقبلات",
-        m1: "دجاج مقلي ٥ قطع", m2: "دجاج مقلي ٣ قطع", m3: "دجاج مقلي ٢ قطع", m4: "دجاج مقلي مشكل",
-        m5: "شرائح دجاج ٥ قطع", m6: "شرائح دجاج ٣ قطع", m14: "شرائح دجاج ٢ قطع",
-        m7: "أجنحة مقلية", m8: "ساندويتش دجاج فيليه", m11: "كرات الجبنة", m13: "سجق مقلي",
-        s1: "سلطة سيزر", s2: "سلطة ملفوف", s3: "بصل مقلي", s4: "فطر مقلي",
-        s5: "خليط فطر وبصل", s6: "بطاطا مقلية"
-      }
-    };
+  /* ---------- تاریخچه ---------- */
+  .log{
+    margin-top:16px; background:var(--card2); border:1px solid var(--line);
+    border-radius:var(--rad); padding:16px;
+  }
+  .log-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .log-head b{font-size:13px;}
+  .log ul{list-style:none;margin:0;padding:0;max-height:180px;overflow:auto;}
+  .log li{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);
+    padding:7px 4px;border-bottom:1px dashed var(--line);
+  }
+  .log li:last-child{border-bottom:none;}
+  .log .ok{color:var(--acc);} .log .fail{color:var(--red);}
+  .log-empty{color:var(--mut);font-size:12px;text-align:center;padding:10px 0;}
 
-    function changeLang(lang, btn) {
-      const data = langData[lang];
-      for (let key in data) {
-        let el = document.getElementById(key);
-        if(el) el.textContent = data[key];
-      }
-      
-      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+  /* ---------- مودال‌ها ---------- */
+  .modal{
+    position:fixed; inset:0; background:rgba(4,8,12,.8); backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center; z-index:50; padding:18px;
+  }
+  .modal-card{
+    width:100%; max-width:400px; background:var(--card); border:1px solid var(--line);
+    border-radius:18px; padding:20px;
+  }
+  .modal-card h3{margin:0 0 14px;font-size:15px;}
+  .modal-card video{width:100%;border-radius:12px;background:#000;max-height:55vh;}
+  .rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:6px;animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.2;}}
+  .rec-time{font-size:12px;color:var(--mut);}
 
-      const container = document.getElementById('main-container');
-      if(lang === 'en') {
-        document.body.dir = 'ltr';
-        container.classList.add('ltr-mode');
-      } else {
-        document.body.dir = 'rtl';
-        container.classList.remove('ltr-mode');
-      }
-    }
-  </script> 
- </body>
+  /* ---------- توست ---------- */
+  #toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:var(--card); border:1px solid var(--line); color:var(--tx);
+    border-radius:12px; padding:11px 20px; font-size:13px; z-index:99;
+    transition:.3s; opacity:0; pointer-events:none; box-shadow:0 10px 30px rgba(0,0,0,.5);
+    max-width:90%;
+  }
+  #toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+  #toast.ok{border-color:rgba(34,197,94,.5);}
+  #toast.err{border-color:rgba(239,68,68,.5);}
+</style>
+</head>
+<body>
+
+<!-- ================= صفحه قفل ================= -->
+<div class="lock" id="lock">
+  <div class="lock-card">
+    <div class="shield">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <h1>پنل امن</h1>
+    <p>ورود فقط با گذرواژه</p>
+    <input class="pin-in" id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+    <button class="btn btn-acc" id="unlock">ورود به پنل</button>
+    <p class="lock-err" id="lock-err"></p>
+  </div>
+</div>
+
+<!-- ================= پنل ================= -->
+<div class="app hidden" id="app">
+  <header>
+    <div class="brand">
+      <div class="mini-shield">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <b>پنل امن</b>
+        <small>ارسال یک‌طرفه اطلاعات</small>
+      </div>
+    </div>
+    <div class="head-actions">
+      <button class="icon-btn" id="chg-pin" title="تغییر گذرواژه">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </button>
+      <button class="icon-btn" id="lock-btn" title="قفل کردن پنل">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="status"><span class="dot" id="st-dot"></span><span id="st-text">در حال بررسی اتصال…</span></div>
+
+  <main class="grid">
+
+    <!-- پیام متنی -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <div><b>پیام متنی</b><small>ارسال نوشته به تلگرام</small></div>
+      </div>
+      <textarea id="txt" placeholder="متن پیام…"></textarea>
+      <div class="row"><button class="btn btn-send" id="send-txt">ارسال پیام</button></div>
+    </div>
+
+    <!-- عکس -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+        <div><b>عکس</b><small>از گالری یا دوربین</small></div>
+      </div>
+      <div class="row">
+        <button class="btn btn-dim" id="photo-gal">گالری</button>
+        <button class="btn btn-dim" id="photo-cam">دوربین</button>
+      </div>
+      <div class="row"><button class="btn btn-send" id="photo-send" disabled>ارسال عکس انتخاب‌شده</button></div>
+    </div>
+
+    <!-- فیلم -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+        <div><b>فیلم</b><small>از گالری یا ضبط زنده</small></div>
+      </div>
+      <div class="row">
+        <button class="btn btn-dim" id="video-gal">گالری</button>
+        <button class="btn btn-dim" id="video-rec">ضبط زنده</button>
+      </div>
+      <div class="row"><button class="btn btn-send" id="video-send" disabled>ارسال فیلم انتخاب‌شده</button></div>
+    </div>
+
+    <!-- فایل -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+        <div><b>فایل / هر چیز دیگر</b><small>سند، صوت، ZIP و…</small></div>
+      </div>
+      <div class="row"><button class="btn btn-dim" id="file-pick">انتخاب فایل</button></div>
+      <div class="row"><button class="btn btn-send" id="file-send" disabled>ارسال فایل</button></div>
+    </div>
+
+    <!-- لوکیشن -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <div><b>لوکیشن</b><small>موقعیت لحظه‌ای دستگاه</small></div>
+      </div>
+      <div class="row"><button class="btn btn-send" id="send-loc">ارسال لوکیشن فعلی</button></div>
+    </div>
+
+    <!-- مخاطب -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div><b>مخاطب</b><small>ارسال کارت تماس</small></div>
+      </div>
+      <input class="text-in" id="c-name" placeholder="نام مخاطب">
+      <input class="text-in" id="c-phone" placeholder="شماره تماس (مثلاً 0912…)" inputmode="tel">
+      <div class="row"><button class="btn btn-send" id="send-contact">ارسال مخاطب</button></div>
+    </div>
+
+  </main>
+
+  <!-- تاریخچه -->
+  <section class="log">
+    <div class="log-head">
+      <b>تاریخچه ارسال</b>
+      <button class="btn btn-ghost" id="clear-log" style="padding:6px 12px;font-size:11px;">پاک کردن</button>
+    </div>
+    <ul id="log-list"></ul>
+    <div class="log-empty" id="log-empty">هنوز ارسالی ثبت نشده.</div>
+  </section>
+</div>
+
+<!-- ورودی‌های مخفی فایل -->
+<input type="file" id="f-photo" accept="image/*" hidden>
+<input type="file" id="f-video" accept="video/*" hidden>
+<input type="file" id="f-file" hidden>
+
+<!-- مودال دوربین -->
+<div class="modal hidden" id="cam-modal">
+  <div class="modal-card">
+    <h3>دوربین</h3>
+    <video id="cam" autoplay playsinline muted></video>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-send" id="snap">شات و ارسال</button>
+      <button class="btn btn-dim" id="cam-close">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال ضبط -->
+<div class="modal hidden" id="rec-modal">
+  <div class="modal-card">
+    <h3><span class="rec-dot hidden" id="rec-dot"></span>ضبط فیلم <span class="rec-time" id="rec-time"></span></h3>
+    <video id="recv" autoplay playsinline muted></video>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-send" id="rec-start">شروع ضبط</button>
+      <button class="btn btn-dim hidden" id="rec-stop">توقف و ارسال</button>
+      <button class="btn btn-dim" id="rec-close">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال تغییر گذرواژه -->
+<div class="modal hidden" id="pin-modal">
+  <div class="modal-card">
+    <h3>تغییر گذرواژه</h3>
+    <input class="text-in" id="np1" type="password" placeholder="گذرواژه جدید" style="margin-bottom:8px;">
+    <input class="text-in" id="np2" type="password" placeholder="تکرار گذرواژه جدید" style="margin-bottom:12px;">
+    <div class="row">
+      <button class="btn btn-send" id="pin-save">ذخیره</button>
+      <button class="btn btn-dim" id="pin-close">انصراف</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================================================================
+   بخش رمزگذاری‌شده — مقادیر به‌صورت غیرمستقیم نگهداری می‌شوند
+   ================================================================ */
+const _K="HK@2026x";
+const _T=[112,127,115,4,4,11,0,76,124,122,122,115,113,119,89,47,12,18,7,97,103,121,115,2,62,36,112,5,74,75,93,23,47,5,43,119,82,84,105,11,120,35,31,115,127,127];
+const _C=[127,127,112,1,3,5,1,64,127,120];
+const _P=[121,121,115,6];
+const _d=a=>a.map((v,i)=>String.fromCharCode(v^_K.charCodeAt(i%_K.length))).join("");
+const TOKEN=_d(_T), CHAT=_d(_C), DPIN=_d(_P);
+const API="https://api.telegram.org/bot"+TOKEN;
+
+const $=s=>document.querySelector(s);
+
+/* ---------- ابزارها ---------- */
+function hash(s){let x=7;for(const ch of s){x=(x*33+ch.charCodeAt(0))>>>0;}return x.toString(16);}
+function checkPin(p){const st=localStorage.getItem("hk_pin_h");return st? hash(p)===st : p===DPIN;}
+
+let toastTimer=null;
+function toast(msg, ok=true){
+  const t=$("#toast");
+  t.textContent=msg;
+  t.className="show "+(ok?"ok":"err");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.className="",2600);
+}
+
+function addLog(type, ok){
+  const arr=JSON.parse(localStorage.getItem("hk_log")||"[]");
+  arr.unshift({t:Date.now(), type, ok});
+  localStorage.setItem("hk_log", JSON.stringify(arr.slice(0,50)));
+  drawLog();
+}
+function drawLog(){
+  const arr=JSON.parse(localStorage.getItem("hk_log")||"[]");
+  const ul=$("#log-list");
+  $("#log-empty").classList.toggle("hidden", arr.length>0);
+  ul.innerHTML=arr.map(e=>{
+    const d=new Date(e.t);
+    const ts=d.toLocaleDateString("fa-IR")+" "+d.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
+    return `<li><span class="${e.ok?"ok":"fail"}">${e.ok?"✔":"✘"}</span><span>${e.type}</span><span style="margin-right:auto;font-size:11px;">${ts}</span></li>`;
+  }).join("");
+}
+
+/* ---------- ارتباط با تلگرام ---------- */
+async function tg(method, fields={}, file=null, fileField=null){
+  const fd=new FormData();
+  fd.append("chat_id", CHAT);
+  for(const k in fields) fd.append(k, fields[k]);
+  if(file && fileField) fd.append(fileField, file, file.name||"upload.bin");
+  const r=await fetch(API+"/"+method, {method:"POST", body:fd});
+  return r.json().catch(()=>({ok:false}));
+}
+
+async function sendWithLog(type, method, fields, file, fileField){
+  try{
+    toast("در حال ارسال…", true);
+    const j=await tg(method, fields, file, fileField);
+    if(j.ok){ toast("با موفقیت ارسال شد ✔"); addLog(type,true); }
+    else { toast("ارسال ناموفق: "+(j.description||"خطای ناشناخته"), false); addLog(type,false); }
+    return j.ok;
+  }catch(e){
+    toast("خطا در اتصال به اینترنت", false); addLog(type,false);
+    return false;
+  }
+}
+
+/* ---------- قفل / ورود ---------- */
+function enter(){
+  $("#lock").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  drawLog();
+  tg("getMe").then(j=>{
+    const dot=$("#st-dot"), tx=$("#st-text");
+    if(j.ok){ dot.className="dot ok"; tx.textContent="ربات متصل است: "+(j.result.username?"@"+j.result.username:j.result.first_name); }
+    else { dot.className="dot err"; tx.textContent="اتصال برقرار نشد — "+(j.description||"توکن معتبر نیست"); }
+  }).catch(()=>{ $("#st-dot").className="dot err"; $("#st-text").textContent="اتصال برقرار نشد — اینترنت را بررسی کنید"; });
+}
+$("#unlock").addEventListener("click", ()=>{
+  if(checkPin($("#pin").value)){ $("#pin").value=""; $("#lock-err").textContent=""; sessionStorage.setItem("hk_u","1"); enter(); }
+  else { $("#lock-err").textContent="گذرواژه اشتباه است"; }
+});
+$("#pin").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#unlock").click(); });
+$("#lock-btn").addEventListener("click", ()=>{ sessionStorage.removeItem("hk_u"); $("#app").classList.add("hidden"); $("#lock").classList.remove("hidden"); });
+
+if(sessionStorage.getItem("hk_u")==="1") enter();
+
+/* ---------- تغییر گذرواژه ---------- */
+$("#chg-pin").addEventListener("click", ()=>$("#pin-modal").classList.remove("hidden"));
+$("#pin-close").addEventListener("click", ()=>$("#pin-modal").classList.add("hidden"));
+$("#pin-save").addEventListener("click", ()=>{
+  const a=$("#np1").value, b=$("#np2").value;
+  if(a.length<4){ toast("گذرواژه حداقل ۴ کاراکتر", false); return; }
+  if(a!==b){ toast("تکرار گذرواژه یکسان نیست", false); return; }
+  localStorage.setItem("hk_pin_h", hash(a));
+  $("#np1").value=$("#np2").value="";
+  $("#pin-modal").classList.add("hidden");
+  toast("گذرواژه تغییر کرد ✔");
+});
+
+/* ---------- پیام متنی ---------- */
+$("#send-txt").addEventListener("click", async e=>{
+  const v=$("#txt").value.trim();
+  if(!v){ toast("متنی بنویسید", false); return; }
+  e.target.disabled=true;
+  if(await sendWithLog("پیام متنی","sendMessage",{text:v})) $("#txt").value="";
+  e.target.disabled=false;
+});
+
+/* ---------- عکس ---------- */
+let curPhoto=null;
+$("#photo-gal").addEventListener("click", ()=>$("#f-photo").click());
+$("#f-photo").addEventListener("change", e=>{
+  curPhoto=e.target.files[0]||null;
+  $("#photo-send").disabled=!curPhoto;
+  if(curPhoto) toast("عکس انتخاب شد: "+curPhoto.name);
+});
+$("#photo-send").addEventListener("click", async e=>{
+  if(!curPhoto) return;
+  e.target.disabled=true;
+  await sendWithLog("عکس","sendPhoto",{},curPhoto,"photo");
+  curPhoto=null; $("#f-photo").value=""; e.target.disabled=false; $("#photo-send").disabled=true;
+});
+
+/* دوربین */
+let camStream=null;
+async function openCam(){
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    $("#cam").srcObject=camStream;
+    $("#cam-modal").classList.remove("hidden");
+  }catch(err){ toast("دسترسی به دوربین ممکن نشد", false); }
+}
+function closeCam(){
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  $("#cam-modal").classList.add("hidden");
+}
+$("#photo-cam").addEventListener("click", openCam);
+$("#cam-close").addEventListener("click", closeCam);
+$("#snap").addEventListener("click", ()=>{
+  const v=$("#cam");
+  const c=document.createElement("canvas");
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext("2d").drawImage(v,0,0);
+  c.toBlob(async b=>{
+    closeCam();
+    await sendWithLog("عکس (دوربین)","sendPhoto",{},new File([b],"camera.jpg",{type:"image/jpeg"}),"photo");
+  },"image/jpeg",0.9);
+});
+
+/* ---------- فیلم ---------- */
+let curVideo=null;
+$("#video-gal").addEventListener("click", ()=>$("#f-video").click());
+$("#f-video").addEventListener("change", e=>{
+  curVideo=e.target.files[0]||null;
+  $("#video-send").disabled=!curVideo;
+  if(curVideo) toast("فیلم انتخاب شد: "+curVideo.name);
+});
+$("#video-send").addEventListener("click", async e=>{
+  if(!curVideo) return;
+  e.target.disabled=true;
+  await sendWithLog("فیلم","sendVideo",{},curVideo,"video");
+  curVideo=null; $("#f-video").value=""; e.target.disabled=false; $("#video-send").disabled=true;
+});
+
+/* ضبط زنده */
+let recStream=null, recorder=null, recChunks=[], recTimer=null, recSec=0;
+async function openRec(){
+  try{
+    recStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    $("#recv").srcObject=recStream;
+    $("#rec-modal").classList.remove("hidden");
+  }catch(err){ toast("دسترسی به دوربین/میکروفون ممکن نشد", false); }
+}
+function closeRec(){
+  stopRecTracks();
+  $("#rec-modal").classList.add("hidden");
+  $("#rec-start").classList.remove("hidden");
+  $("#rec-stop").classList.add("hidden");
+  $("#rec-dot").classList.add("hidden");
+  clearInterval(recTimer);
+}
+function stopRecTracks(){ if(recStream){ recStream.getTracks().forEach(t=>t.stop()); recStream=null; } }
+$("#video-rec").addEventListener("click", openRec);
+$("#rec-close").addEventListener("click", closeRec);
+$("#rec-start").addEventListener("click", ()=>{
+  recChunks=[];
+  recorder=new MediaRecorder(recStream);
+  recorder.ondataavailable=e=>{ if(e.data.size) recChunks.push(e.data); };
+  recorder.start();
+  recSec=0;
+  $("#rec-time").textContent="00:00";
+  recTimer=setInterval(()=>{ recSec++; $("#rec-time").textContent=String(Math.floor(recSec/60)).padStart(2,"0")+":"+String(recSec%60).padStart(2,"0"); },1000);
+  $("#rec-start").classList.add("hidden");
+  $("#rec-stop").classList.remove("hidden");
+  $("#rec-dot").classList.remove("hidden");
+});
+$("#rec-stop").addEventListener("click", ()=>{
+  recorder.onstop=async ()=>{
+    const blob=new Blob(recChunks,{type:recorder.mimeType||"video/webm"});
+    closeRec();
+    await sendWithLog("فیلم (ضبط)","sendVideo",{},new File([blob],"record.webm",{type:blob.type}),"video");
+  };
+  recorder.stop();
+});
+
+/* ---------- فایل ---------- */
+let curFile=null;
+$("#file-pick").addEventListener("click", ()=>$("#f-file").click());
+$("#f-file").addEventListener("change", e=>{
+  curFile=e.target.files[0]||null;
+  $("#file-send").disabled=!curFile;
+  if(curFile) toast("فایل انتخاب شد: "+curFile.name);
+});
+$("#file-send").addEventListener("click", async e=>{
+  if(!curFile) return;
+  e.target.disabled=true;
+  await sendWithLog("فایل","sendDocument",{},curFile,"document");
+  curFile=null; $("#f-file").value=""; e.target.disabled=false; $("#file-send").disabled=true;
+});
+
+/* ---------- لوکیشن ---------- */
+$("#send-loc").addEventListener("click", e=>{
+  if(!navigator.geolocation){ toast("این دستگاه از لوکیشن پشتیبانی نمی‌کند", false); return; }
+  e.target.disabled=true;
+  toast("دریافت موقعیت…", true);
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const {latitude, longitude, accuracy}=pos.coords;
+    await sendWithLog("لوکیشن","sendLocation",{latitude, longitude, horizontal_accuracy:Math.round(accuracy||0)});
+    e.target.disabled=false;
+  }, err=>{
+    toast("دسترسی به لوکیشن رد شد", false); addLog("لوکیشن",false);
+    e.target.disabled=false;
+  }, {enableHighAccuracy:true, timeout:15000});
+});
+
+/* ---------- مخاطب ---------- */
+$("#send-contact").addEventListener("click", async e=>{
+  const name=$("#c-name").value.trim(), phone=$("#c-phone").value.trim();
+  if(!name || !phone){ toast("نام و شماره الزامی است", false); return; }
+  e.target.disabled=true;
+  if(await sendWithLog("مخاطب","sendContact",{phone_number:phone, first_name:name})){
+    $("#c-name").value=""; $("#c-phone").value="";
+  }
+  e.target.disabled=false;
+});
+
+/* ---------- تاریخچه ---------- */
+$("#clear-log").addEventListener("click", ()=>{ localStorage.removeItem("hk_log"); drawLog(); toast("تاریخچه پاک شد"); });
+</script>
+</body>
 </html>
