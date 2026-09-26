@@ -1,6 +1,6 @@
 /* Unmute service worker — offline shell, cache-first static, network-only API */
-const V = "um1";
-const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/views.js", "/chat.js", "/i18n.js", "/logo.svg", "/manifest.webmanifest"];
+const V = "um2";
+const SHELL = ["/", "/index.html", "/style.css?v=2", "/app.js", "/views.js", "/chat.js", "/i18n.js", "/logo.svg", "/manifest.webmanifest"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
