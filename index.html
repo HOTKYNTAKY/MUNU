@@ -27,7 +27,6 @@
   .flag{width:96px;border-radius:8px;border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.45);}
   .flag-mini{width:38px;border-radius:6px;border:1px solid var(--line);}
 
-  /* ---------- صفحه ورود / ثبت‌نام ---------- */
   .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
   .auth-card{
     width:100%;max-width:380px;background:linear-gradient(180deg,var(--card),var(--card2));
@@ -39,12 +38,8 @@
   .tabs{display:flex;gap:6px;background:#0a0d12;border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:14px;}
   .tab{flex:1;border:none;background:transparent;color:var(--mut);padding:9px;border-radius:9px;cursor:pointer;font-weight:700;font-size:13px;transition:.2s;}
   .tab.active{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:12px;min-height:0;}
-  .chip-user{
-    border:1px solid var(--acc-line);background:var(--acc-soft);color:var(--acc);
-    border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;transition:.2s;
-  }
-  .chip-user:hover{filter:brightness(1.15);}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:12px;}
+  .chip-user{border:1px solid var(--acc-line);background:var(--acc-soft);color:var(--acc);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;}
   .text-in{
     width:100%;background:#0a0d12;color:var(--tx);border:1px solid var(--line);
     border-radius:11px;padding:11px 13px;font-family:inherit;font-size:13px;outline:none;margin-bottom:9px;
@@ -55,13 +50,14 @@
   .btn-acc:hover{filter:brightness(1.08);}
   .btn-acc:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
   .btn-ghost{background:transparent;color:var(--mut);border:1px solid var(--line);}
-  .btn-ghost:hover{color:var(--tx);border-color:var(--mut);}
   .btn-dim{background:#1a212c;color:var(--tx);border:1px solid var(--line);}
   .btn-dim:hover{border-color:var(--mut);}
+  .btn-send{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
+  .btn-send:hover{filter:brightness(1.08);}
+  .btn-send:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
   .err{color:var(--red);font-size:12px;min-height:18px;margin:10px 0 0;}
 
-  /* ---------- پنل ---------- */
-  .app{max-width:860px;margin:0 auto;padding:18px 16px 60px;}
+  .app{max-width:860px;margin:0 auto;padding:18px 16px 90px;}
   header{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     padding:12px 16px;background:linear-gradient(180deg,var(--card),var(--card2));
@@ -107,21 +103,37 @@
     width:100%;background:#0a0d12;color:var(--tx);border:1px solid var(--line);
     border-radius:11px;padding:10px 12px;font-family:inherit;font-size:13px;outline:none;resize:vertical;min-height:74px;
   }
-  textarea:focus{border-color:var(--acc);}
   .row{display:flex;gap:8px;}
   .row .btn{flex:1;padding:10px 12px;font-size:13px;}
-  .btn-send{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
-  .btn-send:hover{filter:brightness(1.08);}
-  .btn-send:disabled{filter:grayscale(.6) brightness(.7);cursor:wait;}
 
   .log{margin-top:16px;background:var(--card2);border:1px solid var(--line);border-radius:var(--rad);padding:16px;}
   .log-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
   .log-head b{font-size:13px;}
   .log ul{list-style:none;margin:0;padding:0;max-height:180px;overflow:auto;}
   .log li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);padding:7px 4px;border-bottom:1px dashed var(--line);}
-  .log li:last-child{border-bottom:none;}
   .log .ok{color:#22c55e;} .log .fail{color:var(--red);}
   .log-empty{color:var(--mut);font-size:12px;text-align:center;padding:10px 0;}
+
+  /* ---------- پیام‌رسان ---------- */
+  .peers{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;}
+  .peer-chip{flex:none;border:1px solid var(--line);background:#1a212c;color:var(--tx);border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;}
+  .peer-chip.active{border-color:var(--acc-line);background:var(--acc-soft);color:var(--acc);}
+  .thread{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:4px;}
+  .bubble{max-width:82%;padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.7;word-break:break-word;white-space:pre-wrap;}
+  .bubble .t{display:block;font-size:10px;opacity:.65;margin-top:4px;}
+  .mine{align-self:flex-end;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
+  .theirs{align-self:flex-start;background:#1a212c;border:1px solid var(--line);}
+  .thread-empty{color:var(--mut);font-size:12px;text-align:center;padding:18px 0;}
+
+  /* ---------- ناوبری پایین ---------- */
+  .bnav{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+    display:flex;gap:6px;z-index:40;background:rgba(16,20,27,.92);
+    border:1px solid var(--line);border-radius:999px;padding:6px;backdrop-filter:blur(8px);
+  }
+  .bnav-btn{border:none;background:transparent;color:var(--mut);padding:9px 18px;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;position:relative;}
+  .bnav-btn.active{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#191204;}
+  .badge{position:absolute;top:-5px;left:-5px;background:var(--red);color:#fff;border-radius:999px;font-size:10px;padding:2px 6px;}
 
   .modal{position:fixed;inset:0;background:rgba(4,8,12,.8);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:50;padding:18px;}
   .modal-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;}
@@ -132,7 +144,7 @@
   .rec-time{font-size:12px;color:var(--mut);}
 
   #toast{
-    position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);
+    position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(80px);
     background:var(--card);border:1px solid var(--line);color:var(--tx);
     border-radius:12px;padding:11px 20px;font-size:13px;z-index:99;
     transition:.3s;opacity:0;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:90%;
@@ -144,12 +156,11 @@
 </head>
 <body>
 
-<!-- ================= ورود / ثبت‌نام ================= -->
 <div class="auth" id="auth">
   <div class="auth-card">
     <img class="flag" src="assets/flag.png" alt="گارد جاویدان">
     <h1>گارد جاویدان</h1>
-    <p>پنل امن ارسال یک‌طرفه — هر کاربر با حساب اختصاصی خود</p>
+    <p>پنل امن ارسال یک‌طرفه + پیام‌رسان دوطرفه</p>
     <div class="tabs">
       <button class="tab active" id="tab-login">ورود</button>
       <button class="tab" id="tab-reg">ساخت حساب</button>
@@ -170,7 +181,6 @@
   </div>
 </div>
 
-<!-- ================= پنل ================= -->
 <div class="app hidden" id="app">
   <header>
     <div class="brand">
@@ -192,77 +202,101 @@
 
   <div class="status"><span class="dot" id="st-dot"></span><span id="st-text">در حال بررسی اتصال…</span></div>
 
-  <main class="grid">
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-        <div><b>پیام متنی</b><small>ارسال نوشته به تلگرام</small></div>
+  <div id="panel-view">
+    <main class="grid">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div><b>پیام متنی</b><small>ارسال نوشته به تلگرام</small></div>
+        </div>
+        <textarea id="txt" placeholder="متن پیام…"></textarea>
+        <div class="row"><button class="btn btn-send" id="send-txt">ارسال پیام</button></div>
       </div>
-      <textarea id="txt" placeholder="متن پیام…"></textarea>
-      <div class="row"><button class="btn btn-send" id="send-txt">ارسال پیام</button></div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
-        <div><b>عکس</b><small>از گالری یا دوربین</small></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+          <div><b>عکس</b><small>از گالری یا دوربین</small></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-dim" id="photo-gal">گالری</button>
+          <button class="btn btn-dim" id="photo-cam">دوربین</button>
+        </div>
+        <div class="row"><button class="btn btn-send" id="photo-send" disabled>ارسال عکس انتخاب‌شده</button></div>
       </div>
-      <div class="row">
-        <button class="btn btn-dim" id="photo-gal">گالری</button>
-        <button class="btn btn-dim" id="photo-cam">دوربین</button>
-      </div>
-      <div class="row"><button class="btn btn-send" id="photo-send" disabled>ارسال عکس انتخاب‌شده</button></div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-        <div><b>فیلم</b><small>از گالری یا ضبط زنده</small></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+          <div><b>فیلم</b><small>از گالری یا ضبط زنده</small></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-dim" id="video-gal">گالری</button>
+          <button class="btn btn-dim" id="video-rec">ضبط زنده</button>
+        </div>
+        <div class="row"><button class="btn btn-send" id="video-send" disabled>ارسال فیلم انتخاب‌شده</button></div>
       </div>
-      <div class="row">
-        <button class="btn btn-dim" id="video-gal">گالری</button>
-        <button class="btn btn-dim" id="video-rec">ضبط زنده</button>
-      </div>
-      <div class="row"><button class="btn btn-send" id="video-send" disabled>ارسال فیلم انتخاب‌شده</button></div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-        <div><b>فایل / هر چیز دیگر</b><small>سند، صوت، ZIP و…</small></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div><b>فایل / هر چیز دیگر</b><small>سند، صوت، ZIP و…</small></div>
+        </div>
+        <div class="row"><button class="btn btn-dim" id="file-pick">انتخاب فایل</button></div>
+        <div class="row"><button class="btn btn-send" id="file-send" disabled>ارسال فایل</button></div>
       </div>
-      <div class="row"><button class="btn btn-dim" id="file-pick">انتخاب فایل</button></div>
-      <div class="row"><button class="btn btn-send" id="file-send" disabled>ارسال فایل</button></div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
-        <div><b>لوکیشن</b><small>موقعیت لحظه‌ای دستگاه</small></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div><b>لوکیشن</b><small>موقعیت لحظه‌ای دستگاه</small></div>
+        </div>
+        <div class="row"><button class="btn btn-send" id="send-loc">ارسال لوکیشن فعلی</button></div>
       </div>
-      <div class="row"><button class="btn btn-send" id="send-loc">ارسال لوکیشن فعلی</button></div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-        <div><b>مخاطب</b><small>ارسال کارت تماس</small></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+          <div><b>مخاطب</b><small>ارسال کارت تماس</small></div>
+        </div>
+        <input class="text-in" id="c-name" placeholder="نام مخاطب">
+        <input class="text-in" id="c-phone" placeholder="شماره تماس (مثلاً 0912…)" inputmode="tel">
+        <div class="row"><button class="btn btn-send" id="send-contact">ارسال مخاطب</button></div>
       </div>
-      <input class="text-in" id="c-name" placeholder="نام مخاطب">
-      <input class="text-in" id="c-phone" placeholder="شماره تماس (مثلاً 0912…)" inputmode="tel">
-      <div class="row"><button class="btn btn-send" id="send-contact">ارسال مخاطب</button></div>
-    </div>
-  </main>
+    </main>
 
-  <section class="log">
-    <div class="log-head">
-      <b>تاریخچه ارسال من</b>
-      <button class="btn btn-ghost" id="clear-log" style="padding:6px 12px;font-size:11px;">پاک کردن</button>
+    <section class="log">
+      <div class="log-head">
+        <b>تاریخچه ارسال من</b>
+        <button class="btn btn-ghost" id="clear-log" style="padding:6px 12px;font-size:11px;">پاک کردن</button>
+      </div>
+      <ul id="log-list"></ul>
+      <div class="log-empty" id="log-empty">هنوز ارسالی ثبت نشده.</div>
+    </section>
+  </div>
+
+  <!-- ---------- پیام‌رسان ---------- -->
+  <section id="msg-view" class="hidden">
+    <div class="log" style="margin-top:0;">
+      <div class="log-head">
+        <b id="msg-title">صندوق پیام</b>
+        <button class="btn btn-ghost" id="notify-btn" style="padding:6px 12px;font-size:11px;">🔔 فعال‌سازی اعلان</button>
+      </div>
+      <div class="peers hidden" id="peers"></div>
+      <div class="thread" id="thread"></div>
+      <div class="thread-empty" id="thread-empty">هنوز پیامی رد و بدل نشده.</div>
+      <div class="row" style="margin-top:10px;">
+        <input class="text-in" id="m-text" placeholder="پیام…" style="margin:0;">
+        <button class="btn btn-send" id="m-send" style="flex:none;padding:10px 22px;">ارسال</button>
+      </div>
     </div>
-    <ul id="log-list"></ul>
-    <div class="log-empty" id="log-empty">هنوز ارسالی ثبت نشده.</div>
   </section>
 </div>
+
+<nav class="bnav hidden" id="bnav">
+  <button class="bnav-btn active" id="nav-panel">🛡️ پنل</button>
+  <button class="bnav-btn" id="nav-msg">✉️ پیام‌رسان<span class="badge hidden" id="unread"></span></button>
+</nav>
 
 <input type="file" id="f-photo" accept="image/*" hidden>
 <input type="file" id="f-video" accept="video/*" hidden>
@@ -308,10 +342,10 @@
 
 <script>
 /* ================================================================
-   پنل گارد جاویدان — کلاینت (بدون هیچ توکنی؛ همه‌چیز از سرور)
+   کلاینت پنل گارد جاویدان — بدون توکن؛ همه‌چیز از سرور
    ================================================================ */
 const $=s=>document.querySelector(s);
-let USER=null;
+let USER=null, ROLE="user", ADMIN_NAME=null;
 let TOKEN=localStorage.getItem("gj_token")||"";
 
 async function api(path, data){
@@ -323,7 +357,6 @@ async function apiGet(path){
   return r.json();
 }
 
-/* ---------- ابزارها ---------- */
 let toastTimer=null;
 function toast(msg, ok=true){
   const t=$("#toast");
@@ -340,7 +373,7 @@ function rememberName(n){
   localStorage.setItem("gj_names", JSON.stringify(a.slice(0,8)));
 }
 
-/* ---------- تاریخچه (سمت سرور، مشترک بین دستگاه‌ها) ---------- */
+/* ---------- تاریخچه ---------- */
 let LOGARR=[];
 function drawLog(){
   $("#log-empty").classList.toggle("hidden", LOGARR.length>0);
@@ -370,13 +403,13 @@ function b64(f){
   });
 }
 
-/* ---------- ارسال‌ها از طریق سرور ---------- */
+/* ---------- ارسال به تلگرام ---------- */
 async function sendPlain(type, method, fields){
   try{
     toast("در حال ارسال…", true);
     const j=await api("/api/send",{method, fields});
     if(j.ok){ toast("با موفقیت ارسال شد ✔"); addLog(type,true); }
-    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطای ناشناخته"), false); addLog(type,false); }
+    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطا"), false); addLog(type,false); }
     return j.ok;
   }catch(e){ toast("خطا در اتصال به سرور", false); addLog(type,false); return false; }
 }
@@ -385,10 +418,122 @@ async function sendFileT(type, method, f){
     toast("در حال آپلود و ارسال…", true);
     const j=await api("/api/sendfile",{method, data:await b64(f), name:f.name});
     if(j.ok){ toast("با موفقیت ارسال شد ✔"); addLog(type,true); }
-    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطای ناشناخته"), false); addLog(type,false); }
+    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطا"), false); addLog(type,false); }
     return j.ok;
   }catch(e){ toast("خطا در اتصال به سرور", false); addLog(type,false); return false; }
 }
+
+/* ================================================================
+   پیام‌رسان دوطرفه
+   ================================================================ */
+let ALLMSGS=[], lastMsgId=0, currentPeer=null, msgViewOpen=false, pollT=null;
+
+function beep(){
+  try{
+    const c=new (window.AudioContext||window.webkitAudioContext)();
+    const o=c.createOscillator(), g=c.createGain();
+    o.connect(g); g.connect(c.destination);
+    o.frequency.value=880; g.gain.value=.08;
+    o.start(); setTimeout(()=>o.stop(),180);
+  }catch(e){}
+}
+function notify(title, body){
+  if(!("Notification" in window) || Notification.permission!=="granted") return;
+  try{ new Notification(title,{body}); }catch(e){}
+}
+$("#notify-btn").addEventListener("click", async ()=>{
+  if(!("Notification" in window)){ toast("این مرورگر اعلان ندارد", false); return; }
+  const p=await Notification.requestPermission();
+  if(p==="granted"){ $("#notify-btn").classList.add("hidden"); toast("اعلان‌ها فعال شد 🔔"); }
+  else toast("اجازه اعلان داده نشد", false);
+});
+
+function fmtT(t){
+  const d=new Date(t);
+  return d.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
+}
+function threadList(){
+  if(ROLE==="admin"){
+    if(currentPeer==="*") return ALLMSGS.filter(m=>m.to==="*");
+    return ALLMSGS.filter(m=>(m.frm===currentPeer&&m.to===USER)||(m.frm===USER&&(m.to===currentPeer||m.to==="*")));
+  }
+  return ALLMSGS;
+}
+function renderThread(){
+  const list=threadList();
+  $("#thread-empty").classList.toggle("hidden", list.length>0);
+  $("#thread").innerHTML=list.map(m=>{
+    const mine=m.frm===USER;
+    const tick=mine? (m.read? " ✔✔":" ✔") : "";
+    const who=mine? "" : `<b style="font-size:10px;opacity:.7;">${m.frm}${m.to==="*"?" 📢":""}</b><br>`;
+    return `<div class="bubble ${mine?"mine":"theirs"}">${who}${m.text.replace(/</g,"&lt;")}<span class="t">${fmtT(m.t)}${tick}</span></div>`;
+  }).join("");
+  $("#thread").scrollTop=$("#thread").scrollHeight;
+}
+async function loadPeers(){
+  try{
+    const j=await apiGet("/api/users");
+    if(!j.ok) return;
+    const el=$("#peers");
+    el.classList.remove("hidden");
+    el.innerHTML="";
+    const mk=(key,label)=>{
+      const b=document.createElement("button");
+      b.className="peer-chip"+(currentPeer===key?" active":"");
+      b.textContent=label;
+      b.onclick=()=>{ currentPeer=key; loadPeers(); renderThread(); };
+      el.appendChild(b);
+    };
+    mk("*","📢 همه");
+    j.users.filter(u=>u.name!==USER).forEach(u=>mk(u.name,"👤 "+u.name+(u.role==="admin"?" ★":"")));
+  }catch(e){}
+}
+async function pollMsgs(){
+  try{
+    const j=await apiGet("/api/msgs");
+    if(!j.ok) return;
+    const prev=lastMsgId;
+    ALLMSGS=j.msgs||[];
+    lastMsgId=Math.max(0,...ALLMSGS.map(m=>m.id));
+    const fresh=ALLMSGS.filter(m=>m.id>prev && m.frm!==USER && (m.to===USER||m.to==="*"));
+    fresh.forEach(m=>{
+      beep();
+      notify("پیام جدید از "+m.frm, m.text.slice(0,80));
+    });
+    const unread=ALLMSGS.filter(m=>m.frm!==USER && (m.to===USER||m.to==="*") && !m.read).length;
+    const badge=$("#unread");
+    if(unread>0 && !msgViewOpen){ badge.textContent=unread; badge.classList.remove("hidden"); }
+    else badge.classList.add("hidden");
+    if(msgViewOpen){
+      renderThread();
+      if(unread>0) await api("/api/markread");
+    }
+  }catch(e){}
+}
+$("#nav-panel").addEventListener("click", ()=>{
+  msgViewOpen=false;
+  $("#nav-panel").classList.add("active"); $("#nav-msg").classList.remove("active");
+  $("#panel-view").classList.remove("hidden"); $("#msg-view").classList.add("hidden");
+});
+$("#nav-msg").addEventListener("click", async ()=>{
+  msgViewOpen=true;
+  $("#nav-msg").classList.add("active"); $("#nav-panel").classList.remove("active");
+  $("#panel-view").classList.add("hidden"); $("#msg-view").classList.remove("hidden");
+  if(ROLE==="admin"){ if(!currentPeer) currentPeer="*"; await loadPeers(); $("#msg-title").textContent="صندوق فرمانده"; }
+  else { currentPeer=ADMIN_NAME; $("#msg-title").textContent="ارتباط با فرمانده ("+ADMIN_NAME+")"; }
+  await pollMsgs();
+  await api("/api/markread");
+  renderThread();
+});
+$("#m-send").addEventListener("click", async ()=>{
+  const v=$("#m-text").value.trim();
+  if(!v){ toast("متنی بنویسید", false); return; }
+  const to=ROLE==="admin"? currentPeer : ADMIN_NAME;
+  const j=await api("/api/msgs",{to, text:v});
+  if(j.ok){ $("#m-text").value=""; await pollMsgs(); renderThread(); }
+  else toast(j.error||"ارسال نشد", false);
+});
+$("#m-text").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#m-send").click(); });
 
 /* ---------- ورود / ثبت‌نام ---------- */
 function drawChips(){
@@ -411,17 +556,21 @@ $("#tab-reg").addEventListener("click", ()=>{
   $("#auth-err").textContent="";
 });
 
-async function start(name){
-  USER=name;
+async function start(name, role, adminName){
+  USER=name; ROLE=role||"user"; ADMIN_NAME=adminName||name;
   rememberName(name);
   $("#auth").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  $("#user-info").textContent="👤 "+name;
+  $("#bnav").classList.remove("hidden");
+  $("#user-info").textContent="👤 "+name+(ROLE==="admin"? " ★ فرمانده":"");
+  if("Notification" in window && Notification.permission==="granted") $("#notify-btn").classList.add("hidden");
   loadLog();
+  pollMsgs();
+  if(!pollT) pollT=setInterval(pollMsgs, 4000);
   try{
     const j=await apiGet("/api/bot");
-    if(j.ok){ $("#st-dot").className="dot ok"; $("#st-text").textContent="سرور و ربات متصل است: "+(j.username?"@"+j.username:""); }
-    else { $("#st-dot").className="dot err"; $("#st-text").textContent="ربات در دسترس نیست — "+(j.desc||""); }
+    if(j.ok){ $("#st-dot").className="dot ok"; $("#st-text").textContent="سرور و ربات متصل است"+(j.username?": @"+j.username:""); }
+    else { $("#st-dot").className="dot err"; $("#st-text").textContent="ربات در دسترس نیست"; }
   }catch(e){ $("#st-dot").className="dot err"; $("#st-text").textContent="اتصال به سرور برقرار نشد"; }
 }
 
@@ -430,8 +579,12 @@ $("#login").addEventListener("click", async ()=>{
   if(!n||!p){ $("#auth-err").textContent="نام کاربری و گذرواژه را وارد کنید"; return; }
   try{
     const j=await api("/api/login",{user:n, pass:p});
-    if(j.ok){ TOKEN=j.token; localStorage.setItem("gj_token", TOKEN); $("#li-pass").value=""; $("#auth-err").textContent=""; start(j.user); }
-    else $("#auth-err").textContent=j.error||"ورود ناموفق";
+    if(j.ok){
+      TOKEN=j.token; localStorage.setItem("gj_token", TOKEN);
+      const me=await apiGet("/api/me");
+      $("#li-pass").value=""; $("#auth-err").textContent="";
+      start(j.user, me.role, me.admin);
+    } else $("#auth-err").textContent=j.error||"ورود ناموفق";
   }catch(e){ $("#auth-err").textContent="اتصال به سرور ممکن نیست"; }
 });
 $("#li-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#login").click(); });
@@ -443,7 +596,9 @@ $("#register").addEventListener("click", async ()=>{
     const j=await api("/api/register",{user:n, pass:p1});
     if(j.ok){
       TOKEN=j.token; localStorage.setItem("gj_token", TOKEN);
-      drawChips(); toast("حساب ساخته شد ✔"); start(j.user);
+      drawChips(); toast(j.role==="admin"? "حساب فرمانده ساخته شد ★":"حساب ساخته شد ✔");
+      start(j.user, j.role, j.role==="admin"? j.user : null);
+      if(ROLE==="user" && !ADMIN_NAME){ const me=await apiGet("/api/me"); ADMIN_NAME=me.admin; }
     } else $("#auth-err").textContent=j.error||"ثبت‌نام ناموفق";
   }catch(e){ $("#auth-err").textContent="اتصال به سرور ممکن نیست"; }
 });
@@ -451,7 +606,9 @@ $("#register").addEventListener("click", async ()=>{
 $("#logout").addEventListener("click", async ()=>{
   try{ await api("/api/logout"); }catch(e){}
   TOKEN=""; localStorage.removeItem("gj_token");
-  USER=null; LOGARR=[];
+  USER=null; LOGARR=[]; ALLMSGS=[]; lastMsgId=0; msgViewOpen=false;
+  clearInterval(pollT); pollT=null;
+  $("#bnav").classList.add("hidden");
   $("#app").classList.add("hidden");
   $("#auth").classList.remove("hidden");
   drawChips();
@@ -473,7 +630,7 @@ $("#pass-save").addEventListener("click", async ()=>{
   }catch(e){ toast("خطا در اتصال به سرور", false); }
 });
 
-/* ---------- پیام متنی ---------- */
+/* ---------- کارت‌های ارسال ---------- */
 $("#send-txt").addEventListener("click", async e=>{
   const v=$("#txt").value.trim();
   if(!v){ toast("متنی بنویسید", false); return; }
@@ -482,7 +639,6 @@ $("#send-txt").addEventListener("click", async e=>{
   e.target.disabled=false;
 });
 
-/* ---------- عکس ---------- */
 let curPhoto=null;
 $("#photo-gal").addEventListener("click", ()=>$("#f-photo").click());
 $("#f-photo").addEventListener("change", e=>{
@@ -522,7 +678,6 @@ $("#snap").addEventListener("click", ()=>{
   },"image/jpeg",0.9);
 });
 
-/* ---------- فیلم ---------- */
 let curVideo=null;
 $("#video-gal").addEventListener("click", ()=>$("#f-video").click());
 $("#f-video").addEventListener("change", e=>{
@@ -576,7 +731,6 @@ $("#rec-stop").addEventListener("click", ()=>{
   recorder.stop();
 });
 
-/* ---------- فایل ---------- */
 let curFile=null;
 $("#file-pick").addEventListener("click", ()=>$("#f-file").click());
 $("#f-file").addEventListener("change", e=>{
@@ -591,7 +745,6 @@ $("#file-send").addEventListener("click", async e=>{
   curFile=null; $("#f-file").value=""; e.target.disabled=false; $("#file-send").disabled=true;
 });
 
-/* ---------- لوکیشن ---------- */
 $("#send-loc").addEventListener("click", e=>{
   if(!navigator.geolocation){ toast("این دستگاه از لوکیشن پشتیبانی نمی‌کند", false); return; }
   e.target.disabled=true;
@@ -606,7 +759,6 @@ $("#send-loc").addEventListener("click", e=>{
   }, {enableHighAccuracy:true, timeout:15000});
 });
 
-/* ---------- مخاطب ---------- */
 $("#send-contact").addEventListener("click", async e=>{
   const name=$("#c-name").value.trim(), phone=$("#c-phone").value.trim();
   if(!name||!phone){ toast("نام و شماره الزامی است", false); return; }
@@ -617,7 +769,6 @@ $("#send-contact").addEventListener("click", async e=>{
   e.target.disabled=false;
 });
 
-/* ---------- تاریخچه ---------- */
 $("#clear-log").addEventListener("click", async ()=>{
   LOGARR=[]; drawLog();
   try{ await api("/api/logclear"); }catch(e){}
@@ -630,7 +781,7 @@ $("#clear-log").addEventListener("click", async ()=>{
   if(TOKEN){
     try{
       const j=await apiGet("/api/me");
-      if(j.ok){ start(j.user); return; }
+      if(j.ok){ start(j.user, j.role, j.admin); return; }
     }catch(e){}
     TOKEN=""; localStorage.removeItem("gj_token");
   }

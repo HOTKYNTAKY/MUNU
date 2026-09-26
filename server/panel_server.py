@@ -7,7 +7,7 @@
 - سرو استاتیک پنل (index.html / assets / menu.html)
 پورت: متغیر محیطی PORT یا آرگومان اول، پیش‌فرض 8787
 """
-import json, os, re, sys, secrets, hashlib, base64, threading, urllib.request, uuid
+import json, os, re, sys, secrets, hashlib, base64, threading, urllib.request, uuid, time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -20,21 +20,23 @@ CHAT = str(CFG["chat"])
 USERS_F  = os.path.join(BASE, "users.json")
 SESS_F   = os.path.join(BASE, "sessions.json")
 LOGS_F   = os.path.join(BASE, "logs.json")
+MSGS_F   = os.path.join(BASE, "msgs.json")
 
 _lock = threading.Lock()
 USERS  = {}
 SESS   = {}
 LOGS   = {}
+MSGS   = []
 FAIL   = {}
 
 def _load():
-    global USERS, SESS, LOGS
+    global USERS, SESS, LOGS, MSGS
     def rd(p, d):
         try:
             with open(p, encoding="utf-8") as f: return json.load(f)
         except Exception:
             return d
-    USERS = rd(USERS_F, {}); SESS = rd(SESS_F, {}); LOGS = rd(LOGS_F, {})
+    USERS = rd(USERS_F, {}); SESS = rd(SESS_F, {}); LOGS = rd(LOGS_F, {}); MSGS = rd(MSGS_F, [])
 
 def _save_users():
     with open(USERS_F, "w", encoding="utf-8") as f: json.dump(USERS, f, ensure_ascii=False)
@@ -42,6 +44,18 @@ def _save_sess():
     with open(SESS_F, "w", encoding="utf-8") as f: json.dump(SESS, f)
 def _save_logs():
     with open(LOGS_F, "w", encoding="utf-8") as f: json.dump(LOGS, f, ensure_ascii=False)
+def _save_msgs():
+    with open(MSGS_F, "w", encoding="utf-8") as f: json.dump(MSGS, f, ensure_ascii=False)
+
+def admin_name():
+    a = CFG.get("admin")
+    if a and a in USERS: return a
+    for n, u in USERS.items():
+        if u.get("role") == "admin": return n
+    return None
+
+def is_admin(u):
+    return u == admin_name()
 
 def pwhash(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 120000).hex()
@@ -93,7 +107,12 @@ class H(SimpleHTTPRequestHandler):
         tok = auth[7:] if auth.startswith("Bearer ") else ""
         with _lock:
             s = SESS.get(tok)
-        return s["user"] if s else None
+            if not s: return None
+            u = USERS.get(s["user"])
+            if u:
+                u["last"] = int(time.time() * 1000)
+                _save_users()
+            return s["user"]
 
     # ---------- استاتیک (فقط سفیدلیست) ----------
     def do_GET(self):
@@ -103,7 +122,26 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"ok": True})
             if p == "/api/me":
                 u = self._user()
-                return self._json({"ok": bool(u), "user": u})
+                if not u: return self._json({"ok": False})
+                with _lock:
+                    role = "admin" if is_admin(u) else "user"
+                return self._json({"ok": True, "user": u, "role": role, "admin": admin_name()})
+            if p == "/api/msgs":
+                u = self._user()
+                if not u: return self._json({"ok": False}, 401)
+                adm = is_admin(u)
+                with _lock:
+                    out = []
+                    for m in MSGS:
+                        if adm or m["frm"] == u or m["to"] == u or m["to"] == "*":
+                            out.append(dict(m))
+                return self._json({"ok": True, "msgs": out})
+            if p == "/api/users":
+                u = self._user()
+                if not u or not is_admin(u): return self._json({"ok": False}, 403)
+                with _lock:
+                    lst = [{"name": n, "role": ("admin" if is_admin(n) else "user"), "last": x.get("last", 0), "c": x.get("c", 0)} for n, x in USERS.items()]
+                return self._json({"ok": True, "users": lst})
             if p == "/api/bot":
                 u = self._user()
                 if not u: return self._json({"ok": False}, 401)
@@ -132,6 +170,8 @@ class H(SimpleHTTPRequestHandler):
             if not u:                 return self._json({"ok": False, "error": "unauthorized"}, 401)
             if p == "/api/logout":    return self.api_logout()
             if p == "/api/changepass":return api_changepass_proxy(self, u)
+            if p == "/api/msgs":      return self.api_msgs(u)
+            if p == "/api/markread":  return self.api_markread(u)
             if p == "/api/send":      return self.api_send(u)
             if p == "/api/sendfile":  return self.api_sendfile(u)
             if p == "/api/log":       return self.api_log(u)
@@ -165,10 +205,11 @@ class H(SimpleHTTPRequestHandler):
         with _lock:
             if name in USERS:            return self._json({"ok": False, "error": "این نام کاربری قبلاً ساخته شده"}, 400)
             salt = secrets.token_hex(8)
-            USERS[name] = {"s": salt, "h": pwhash(pw, salt), "c": int(__import__("time").time() * 1000)}
+            role = "admin" if (CFG.get("admin") == name or not any(x.get("role") == "admin" for x in USERS.values())) else "user"
+            USERS[name] = {"s": salt, "h": pwhash(pw, salt), "c": int(time.time() * 1000), "role": role, "last": int(time.time() * 1000)}
             _save_users()
             tok = self._make_session(name)
-        return self._json({"ok": True, "token": tok, "user": name})
+        return self._json({"ok": True, "token": tok, "user": name, "role": role})
 
     def api_login(self):
         b = self._body()
@@ -195,6 +236,34 @@ class H(SimpleHTTPRequestHandler):
         with _lock:
             SESS.pop(tok, None)
             _save_sess()
+        return self._json({"ok": True})
+
+    # ---------- پیام‌رسان دوطرفه ----------
+    def api_msgs(self, u):
+        b = self._body()
+        to = (b.get("to") or "").strip()
+        text = (b.get("text") or "").strip()
+        if not text:                 return self._json({"ok": False, "error": "empty"}, 400)
+        if len(text) > 4000:         return self._json({"ok": False, "error": "too long"}, 400)
+        adm = is_admin(u)
+        with _lock:
+            if to == "*":
+                if not adm:          return self._json({"ok": False}, 403)
+            elif to not in USERS:    return self._json({"ok": False, "error": "no user"}, 400)
+            elif not adm and to != admin_name():
+                                     return self._json({"ok": False}, 403)
+            mid = (max([m["id"] for m in MSGS], default=0) + 1)
+            m = {"id": mid, "frm": u, "to": to, "text": text, "t": int(time.time() * 1000), "read": False}
+            MSGS.append(m)
+            _save_msgs()
+        return self._json({"ok": True, "id": mid})
+
+    def api_markread(self, u):
+        with _lock:
+            for m in MSGS:
+                if m["to"] == u and not m["read"]:
+                    m["read"] = True
+            _save_msgs()
         return self._json({"ok": True})
 
     # ---------- ارسال ----------
@@ -260,6 +329,9 @@ def main():
     domain = os.environ.get("CERT_DOMAIN", "gavidan.norkhizstudio.com")
     cert = "/etc/letsencrypt/live/%s/fullchain.pem" % domain
     key  = "/etc/letsencrypt/live/%s/privkey.pem" % domain
+    if not (os.path.exists(cert) and os.path.exists(key)):
+        cert = os.path.join(BASE, "cert.pem")
+        key  = os.path.join(BASE, "key.pem")
     if os.path.exists(cert) and os.path.exists(key):
         import ssl
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
