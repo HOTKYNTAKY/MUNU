@@ -257,7 +257,17 @@ def api_changepass_proxy(h, u):
 def main():
     _load()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), H)
-    print("GARD JAVIDAN PANEL on 0.0.0.0:%d" % PORT, flush=True)
+    domain = os.environ.get("CERT_DOMAIN", "gavidan.norkhizstudio.com")
+    cert = "/etc/letsencrypt/live/%s/fullchain.pem" % domain
+    key  = "/etc/letsencrypt/live/%s/privkey.pem" % domain
+    if os.path.exists(cert) and os.path.exists(key):
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert, key)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        print("GARD JAVIDAN PANEL (HTTPS) on 0.0.0.0:%d" % PORT, flush=True)
+    else:
+        print("GARD JAVIDAN PANEL (HTTP) on 0.0.0.0:%d" % PORT, flush=True)
     srv.serve_forever()
 
 if __name__ == "__main__":
