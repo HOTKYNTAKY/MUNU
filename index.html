@@ -308,26 +308,22 @@
 
 <script>
 /* ================================================================
-   بخش رمزگذاری‌شده
+   پنل گارد جاویدان — کلاینت (بدون هیچ توکنی؛ همه‌چیز از سرور)
    ================================================================ */
-const _K="HK@2026x";
-const _T=[112,127,115,4,4,11,0,76,124,122,122,115,113,119,89,47,12,18,7,97,103,121,115,2,62,36,112,5,74,75,93,23,47,5,43,119,82,84,105,11,120,35,31,115,127,127];
-const _C=[127,127,112,1,3,5,1,64,127,120];
-const _d=a=>a.map((v,i)=>String.fromCharCode(v^_K.charCodeAt(i%_K.length))).join("");
-const TOKEN=_d(_T), CHAT=_d(_C);
-const API="https://api.telegram.org/bot"+TOKEN;
-
 const $=s=>document.querySelector(s);
 let USER=null;
+let TOKEN=localStorage.getItem("gj_token")||"";
+
+async function api(path, data){
+  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},body:JSON.stringify(data||{})});
+  return r.json();
+}
+async function apiGet(path){
+  const r=await fetch(path,{headers:{"Authorization":"Bearer "+TOKEN}});
+  return r.json();
+}
 
 /* ---------- ابزارها ---------- */
-async function sha256(s){
-  const b=await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
-}
-const getUsers=()=>JSON.parse(localStorage.getItem("gj_users")||"{}");
-const saveUsers=u=>localStorage.setItem("gj_users",JSON.stringify(u));
-
 let toastTimer=null;
 function toast(msg, ok=true){
   const t=$("#toast");
@@ -337,56 +333,67 @@ function toast(msg, ok=true){
   toastTimer=setTimeout(()=>t.className="",2600);
 }
 
-/* ---------- تاریخچه اختصاصی هر کاربر ---------- */
-const logKey=()=>"gj_log_"+USER;
-function addLog(type, ok){
-  const arr=JSON.parse(localStorage.getItem(logKey())||"[]");
-  arr.unshift({t:Date.now(), type, ok});
-  localStorage.setItem(logKey(), JSON.stringify(arr.slice(0,50)));
-  drawLog();
+const getNames=()=>JSON.parse(localStorage.getItem("gj_names")||"[]");
+function rememberName(n){
+  const a=getNames().filter(x=>x!==n);
+  a.unshift(n);
+  localStorage.setItem("gj_names", JSON.stringify(a.slice(0,8)));
 }
+
+/* ---------- تاریخچه (سمت سرور، مشترک بین دستگاه‌ها) ---------- */
+let LOGARR=[];
 function drawLog(){
-  const arr=JSON.parse(localStorage.getItem(logKey())||"[]");
-  $("#log-empty").classList.toggle("hidden", arr.length>0);
-  $("#log-list").innerHTML=arr.map(e=>{
+  $("#log-empty").classList.toggle("hidden", LOGARR.length>0);
+  $("#log-list").innerHTML=LOGARR.map(e=>{
     const d=new Date(e.t);
     const ts=d.toLocaleDateString("fa-IR")+" "+d.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
     return `<li><span class="${e.ok?"ok":"fail"}">${e.ok?"✔":"✘"}</span><span>${e.type}</span><span style="margin-right:auto;font-size:11px;">${ts}</span></li>`;
   }).join("");
 }
-
-/* ---------- تلگرام (ارسال‌ها با برچسب کاربر) ---------- */
-async function tg(method, fields={}, file=null, fileField=null){
-  const fd=new FormData();
-  fd.append("chat_id", CHAT);
-  for(const k in fields) fd.append(k, fields[k]);
-  if(file && fileField) fd.append(fileField, file, file.name||"upload.bin");
-  const r=await fetch(API+"/"+method, {method:"POST", body:fd});
-  return r.json().catch(()=>({ok:false}));
+async function loadLog(){
+  try{ const j=await apiGet("/api/log"); if(j.ok) LOGARR=j.log||[]; }catch(e){}
+  drawLog();
 }
-async function sendWithLog(type, method, fields, file, fileField){
+async function addLog(type, ok){
+  LOGARR.unshift({t:Date.now(), type, ok});
+  LOGARR=LOGARR.slice(0,50);
+  drawLog();
+  try{ await api("/api/log",{t:Date.now(), type, ok}); }catch(e){}
+}
+
+function b64(f){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(String(r.result).split(",")[1]);
+    r.onerror=rej;
+    r.readAsDataURL(f);
+  });
+}
+
+/* ---------- ارسال‌ها از طریق سرور ---------- */
+async function sendPlain(type, method, fields){
   try{
-    const f={...fields};
-    if(method==="sendMessage") f.text=(f.text||"")+"\n\n👤 کاربر: "+USER;
-    if(file) f.caption="👤 کاربر: "+USER;
     toast("در حال ارسال…", true);
-    const j=await tg(method, f, file, fileField);
-    if(j.ok){
-      if(method==="sendLocation"||method==="sendContact")
-        await tg("sendMessage",{text:"👤 کاربر: "+USER+" — "+type});
-      toast("با موفقیت ارسال شد ✔"); addLog(type,true);
-    } else { toast("ارسال ناموفق: "+(j.description||"خطای ناشناخته"), false); addLog(type,false); }
+    const j=await api("/api/send",{method, fields});
+    if(j.ok){ toast("با موفقیت ارسال شد ✔"); addLog(type,true); }
+    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطای ناشناخته"), false); addLog(type,false); }
     return j.ok;
-  }catch(e){
-    toast("خطا در اتصال به اینترنت", false); addLog(type,false);
-    return false;
-  }
+  }catch(e){ toast("خطا در اتصال به سرور", false); addLog(type,false); return false; }
+}
+async function sendFileT(type, method, f){
+  try{
+    toast("در حال آپلود و ارسال…", true);
+    const j=await api("/api/sendfile",{method, data:await b64(f), name:f.name});
+    if(j.ok){ toast("با موفقیت ارسال شد ✔"); addLog(type,true); }
+    else { toast("ارسال ناموفق: "+(j.desc||j.error||"خطای ناشناخته"), false); addLog(type,false); }
+    return j.ok;
+  }catch(e){ toast("خطا در اتصال به سرور", false); addLog(type,false); return false; }
 }
 
 /* ---------- ورود / ثبت‌نام ---------- */
 function drawChips(){
   const el=$("#users-chips"); el.innerHTML="";
-  Object.keys(getUsers()).forEach(n=>{
+  getNames().forEach(n=>{
     const b=document.createElement("button");
     b.className="chip-user"; b.textContent="👤 "+n;
     b.onclick=()=>{ $("#tab-login").click(); $("#li-user").value=n; $("#li-pass").value=""; $("#li-pass").focus(); };
@@ -404,49 +411,47 @@ $("#tab-reg").addEventListener("click", ()=>{
   $("#auth-err").textContent="";
 });
 
-function start(name){
+async function start(name){
   USER=name;
-  sessionStorage.setItem("gj_session", name);
+  rememberName(name);
   $("#auth").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  const u=getUsers()[name];
-  const since=u&&u.c? new Date(u.c).toLocaleDateString("fa-IR") : "";
-  $("#user-info").textContent="👤 "+name+(since? " — عضو از "+since : "");
-  drawLog();
-  tg("getMe").then(j=>{
-    if(j.ok){ $("#st-dot").className="dot ok"; $("#st-text").textContent="ربات متصل است: "+(j.result.username?"@"+j.result.username:j.result.first_name); }
-    else { $("#st-dot").className="dot err"; $("#st-text").textContent="اتصال برقرار نشد — "+(j.description||"توکن معتبر نیست"); }
-  }).catch(()=>{ $("#st-dot").className="dot err"; $("#st-text").textContent="اتصال برقرار نشد — اینترنت را بررسی کنید"; });
+  $("#user-info").textContent="👤 "+name;
+  loadLog();
+  try{
+    const j=await apiGet("/api/bot");
+    if(j.ok){ $("#st-dot").className="dot ok"; $("#st-text").textContent="سرور و ربات متصل است: "+(j.username?"@"+j.username:""); }
+    else { $("#st-dot").className="dot err"; $("#st-text").textContent="ربات در دسترس نیست — "+(j.desc||""); }
+  }catch(e){ $("#st-dot").className="dot err"; $("#st-text").textContent="اتصال به سرور برقرار نشد"; }
 }
 
 $("#login").addEventListener("click", async ()=>{
   const n=$("#li-user").value.trim(), p=$("#li-pass").value;
-  const u=getUsers()[n];
   if(!n||!p){ $("#auth-err").textContent="نام کاربری و گذرواژه را وارد کنید"; return; }
-  if(!u){ $("#auth-err").textContent="این حساب روی این دستگاه وجود ندارد"; return; }
-  if(await sha256(u.s+p)===u.h){ $("#li-pass").value=""; $("#auth-err").textContent=""; start(n); }
-  else $("#auth-err").textContent="گذرواژه اشتباه است";
+  try{
+    const j=await api("/api/login",{user:n, pass:p});
+    if(j.ok){ TOKEN=j.token; localStorage.setItem("gj_token", TOKEN); $("#li-pass").value=""; $("#auth-err").textContent=""; start(j.user); }
+    else $("#auth-err").textContent=j.error||"ورود ناموفق";
+  }catch(e){ $("#auth-err").textContent="اتصال به سرور ممکن نیست"; }
 });
 $("#li-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#login").click(); });
 
 $("#register").addEventListener("click", async ()=>{
   const n=$("#rg-user").value.trim(), p1=$("#rg-pass").value, p2=$("#rg-pass2").value;
-  if(n.length<3){ $("#auth-err").textContent="نام کاربری حداقل ۳ کاراکتر"; return; }
-  if(p1.length<4){ $("#auth-err").textContent="گذرواژه حداقل ۴ کاراکتر"; return; }
   if(p1!==p2){ $("#auth-err").textContent="تکرار گذرواژه یکسان نیست"; return; }
-  const users=getUsers();
-  if(users[n]){ $("#auth-err").textContent="این نام کاربری قبلاً ساخته شده"; return; }
-  const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
-  users[n]={s:salt, h:await sha256(salt+p1), c:Date.now()};
-  saveUsers(users);
-  drawChips();
-  toast("حساب ساخته شد ✔");
-  start(n);
+  try{
+    const j=await api("/api/register",{user:n, pass:p1});
+    if(j.ok){
+      TOKEN=j.token; localStorage.setItem("gj_token", TOKEN);
+      drawChips(); toast("حساب ساخته شد ✔"); start(j.user);
+    } else $("#auth-err").textContent=j.error||"ثبت‌نام ناموفق";
+  }catch(e){ $("#auth-err").textContent="اتصال به سرور ممکن نیست"; }
 });
 
-$("#logout").addEventListener("click", ()=>{
-  sessionStorage.removeItem("gj_session");
-  USER=null;
+$("#logout").addEventListener("click", async ()=>{
+  try{ await api("/api/logout"); }catch(e){}
+  TOKEN=""; localStorage.removeItem("gj_token");
+  USER=null; LOGARR=[];
   $("#app").classList.add("hidden");
   $("#auth").classList.remove("hidden");
   drawChips();
@@ -456,17 +461,16 @@ $("#logout").addEventListener("click", ()=>{
 $("#chg-pass").addEventListener("click", ()=>$("#pass-modal").classList.remove("hidden"));
 $("#pass-close").addEventListener("click", ()=>$("#pass-modal").classList.add("hidden"));
 $("#pass-save").addEventListener("click", async ()=>{
-  const users=getUsers(), u=users[USER];
-  if(await sha256(u.s+$("#op").value)!==u.h){ toast("گذرواژه فعلی اشتباه است", false); return; }
   const a=$("#np1").value, b=$("#np2").value;
-  if(a.length<4){ toast("گذرواژه جدید حداقل ۴ کاراکتر", false); return; }
   if(a!==b){ toast("تکرار گذرواژه یکسان نیست", false); return; }
-  const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
-  users[USER]={s:salt, h:await sha256(salt+a), c:u.c};
-  saveUsers(users);
-  $("#op").value=$("#np1").value=$("#np2").value="";
-  $("#pass-modal").classList.add("hidden");
-  toast("گذرواژه تغییر کرد ✔");
+  try{
+    const j=await api("/api/changepass",{old:$("#op").value, new:a});
+    if(j.ok){
+      $("#op").value=$("#np1").value=$("#np2").value="";
+      $("#pass-modal").classList.add("hidden");
+      toast("گذرواژه تغییر کرد ✔");
+    } else toast(j.error||"تغییر ناموفق", false);
+  }catch(e){ toast("خطا در اتصال به سرور", false); }
 });
 
 /* ---------- پیام متنی ---------- */
@@ -474,7 +478,7 @@ $("#send-txt").addEventListener("click", async e=>{
   const v=$("#txt").value.trim();
   if(!v){ toast("متنی بنویسید", false); return; }
   e.target.disabled=true;
-  if(await sendWithLog("پیام متنی","sendMessage",{text:v})) $("#txt").value="";
+  if(await sendPlain("پیام متنی","sendMessage",{text:v})) $("#txt").value="";
   e.target.disabled=false;
 });
 
@@ -489,7 +493,7 @@ $("#f-photo").addEventListener("change", e=>{
 $("#photo-send").addEventListener("click", async e=>{
   if(!curPhoto) return;
   e.target.disabled=true;
-  await sendWithLog("عکس","sendPhoto",{},curPhoto,"photo");
+  await sendFileT("عکس","sendPhoto",curPhoto);
   curPhoto=null; $("#f-photo").value=""; e.target.disabled=false; $("#photo-send").disabled=true;
 });
 
@@ -514,7 +518,7 @@ $("#snap").addEventListener("click", ()=>{
   c.getContext("2d").drawImage(v,0,0);
   c.toBlob(async b=>{
     closeCam();
-    await sendWithLog("عکس (دوربین)","sendPhoto",{},new File([b],"camera.jpg",{type:"image/jpeg"}),"photo");
+    await sendFileT("عکس (دوربین)","sendPhoto",new File([b],"camera.jpg",{type:"image/jpeg"}));
   },"image/jpeg",0.9);
 });
 
@@ -529,7 +533,7 @@ $("#f-video").addEventListener("change", e=>{
 $("#video-send").addEventListener("click", async e=>{
   if(!curVideo) return;
   e.target.disabled=true;
-  await sendWithLog("فیلم","sendVideo",{},curVideo,"video");
+  await sendFileT("فیلم","sendVideo",curVideo);
   curVideo=null; $("#f-video").value=""; e.target.disabled=false; $("#video-send").disabled=true;
 });
 
@@ -567,7 +571,7 @@ $("#rec-stop").addEventListener("click", ()=>{
   recorder.onstop=async ()=>{
     const blob=new Blob(recChunks,{type:recorder.mimeType||"video/webm"});
     closeRec();
-    await sendWithLog("فیلم (ضبط)","sendVideo",{},new File([blob],"record.webm",{type:blob.type}),"video");
+    await sendFileT("فیلم (ضبط)","sendVideo",new File([blob],"record.webm",{type:blob.type}));
   };
   recorder.stop();
 });
@@ -583,7 +587,7 @@ $("#f-file").addEventListener("change", e=>{
 $("#file-send").addEventListener("click", async e=>{
   if(!curFile) return;
   e.target.disabled=true;
-  await sendWithLog("فایل","sendDocument",{},curFile,"document");
+  await sendFileT("فایل","sendDocument",curFile);
   curFile=null; $("#f-file").value=""; e.target.disabled=false; $("#file-send").disabled=true;
 });
 
@@ -594,7 +598,7 @@ $("#send-loc").addEventListener("click", e=>{
   toast("دریافت موقعیت…", true);
   navigator.geolocation.getCurrentPosition(async pos=>{
     const {latitude, longitude, accuracy}=pos.coords;
-    await sendWithLog("لوکیشن","sendLocation",{latitude, longitude, horizontal_accuracy:Math.round(accuracy||0)});
+    await sendPlain("لوکیشن","sendLocation",{latitude, longitude, horizontal_accuracy:Math.round(accuracy||0)});
     e.target.disabled=false;
   }, ()=>{
     toast("دسترسی به لوکیشن رد شد", false); addLog("لوکیشن",false);
@@ -607,19 +611,30 @@ $("#send-contact").addEventListener("click", async e=>{
   const name=$("#c-name").value.trim(), phone=$("#c-phone").value.trim();
   if(!name||!phone){ toast("نام و شماره الزامی است", false); return; }
   e.target.disabled=true;
-  if(await sendWithLog("مخاطب","sendContact",{phone_number:phone, first_name:name})){
+  if(await sendPlain("مخاطب","sendContact",{phone_number:phone, first_name:name})){
     $("#c-name").value=""; $("#c-phone").value="";
   }
   e.target.disabled=false;
 });
 
 /* ---------- تاریخچه ---------- */
-$("#clear-log").addEventListener("click", ()=>{ localStorage.removeItem(logKey()); drawLog(); toast("تاریخچه پاک شد"); });
+$("#clear-log").addEventListener("click", async ()=>{
+  LOGARR=[]; drawLog();
+  try{ await api("/api/logclear"); }catch(e){}
+  toast("تاریخچه پاک شد");
+});
 
 /* ---------- شروع ---------- */
-const sess=sessionStorage.getItem("gj_session");
-if(sess && getUsers()[sess]) start(sess);
-else drawChips();
+(async ()=>{
+  drawChips();
+  if(TOKEN){
+    try{
+      const j=await apiGet("/api/me");
+      if(j.ok){ start(j.user); return; }
+    }catch(e){}
+    TOKEN=""; localStorage.removeItem("gj_token");
+  }
+})();
 </script>
 </body>
 </html>
