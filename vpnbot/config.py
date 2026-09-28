@@ -64,7 +64,7 @@ def run_setup_wizard() -> BotConfig:
         print("❌ توکن معتبر نیست. دوباره تلاش کن.")
 
     while True:
-        admin = input("👑 آیدی عددی ادمین (مالک): ").strip()
+        admin = input("👑 آیدی عددی ادمین (مالک) [7403377873]: ").strip() or "7403377873"
         if admin.isdigit():
             break
         print("❌ فقط عدد وارد کن.")
@@ -109,8 +109,14 @@ def get_config(interactive: bool = True) -> BotConfig:
 
 
 def is_admin(user_id: int) -> bool:
-    """آیا این کاربر ادمین (مالک) است؟"""
-    return user_id == get_config(interactive=False).admin_id
+    """آیا این کاربر ادمین است؟ (مالک یا ادمین کمکی)"""
+    if user_id == get_config(interactive=False).admin_id:
+        return True
+    try:
+        import database as db
+        return db.is_extra_admin(user_id)
+    except Exception:
+        return False
 
 
 if __name__ == "__main__":

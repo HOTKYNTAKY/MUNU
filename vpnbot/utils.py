@@ -47,3 +47,33 @@ def sub_email(user_id: int) -> str:
 def render_template(template: str, email: str) -> str:
     """پر کردن قالب کانفیگ سرور با UUID و ایمیل تازه."""
     return template.replace("{UUID}", new_uuid()).replace("{EMAIL}", email)
+
+
+async def px(bot, chat_id: int, html: str, reply_markup=None):
+    """ارسال متن HTML با پشتیبانی از {e:name} (ایموجی پریمیوم)."""
+    import premium
+    text, entities = premium.parse_text(html)
+    return await bot.send_message(chat_id, text, entities=entities or None,
+                                  reply_markup=reply_markup, parse_mode=None)
+
+
+async def px_edit(message, html: str, reply_markup=None):
+    """ویرایش پیام با پشتیبانی از {e:name} (ایموجی پریمیوم)."""
+    import premium
+    from aiogram.exceptions import TelegramBadRequest
+    text, entities = premium.parse_text(html)
+    try:
+        return await message.edit_text(text, entities=entities or None,
+                                       reply_markup=reply_markup, parse_mode=None)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            return message
+        return await message.answer(text, entities=entities or None,
+                                    reply_markup=reply_markup, parse_mode=None)
+
+
+def panel_uname(user_id: int, tag: str) -> str:
+    """نام کاربری سازگار با پنل (حروف کوچک، ۳ تا ۳۲ کاراکتر)."""
+    import re
+    s = re.sub(r"[^a-z0-9_]", "", f"u{user_id}{tag}".lower())
+    return (s[:32] or f"u{user_id}") if len(s) >= 3 else f"u{user_id}x"

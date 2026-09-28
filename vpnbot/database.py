@@ -83,12 +83,56 @@ CREATE TABLE IF NOT EXISTS settings(
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS texts(
+  key   TEXT PRIMARY KEY,   -- کلید متن (مثلا btn_buy)
+  value TEXT NOT NULL       -- متن قابل ویرایش (پشتیبانی از {e:emoji})
+);
+CREATE TABLE IF NOT EXISTS menu_buttons(
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  text   TEXT NOT NULL,     -- متن دکمه شیشه‌ای
+  url    TEXT NOT NULL,     -- لینک (https://... یا tg://...)
+  pos    INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS premium_emoji(
+  name     TEXT PRIMARY KEY,  -- نام کوتاه (مثلا fire)
+  emoji_id TEXT NOT NULL      -- custom_emoji_id تلگرام
+);
+CREATE TABLE IF NOT EXISTS discount_codes(
+  code       TEXT PRIMARY KEY,
+  percent    INTEGER NOT NULL,          -- درصد تخفیف 1..100
+  max_uses   INTEGER NOT NULL DEFAULT 0, -- سقف استفاده (۰ = نامحدود)
+  used       INTEGER NOT NULL DEFAULT 0,
+  active     INTEGER NOT NULL DEFAULT 1,
+  expires_at INTEGER NOT NULL DEFAULT 0  -- ۰ = بدون انقضا
+);
+CREATE TABLE IF NOT EXISTS panels(
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  name     TEXT NOT NULL,     -- مثلا «پاسارگارد آلمان»
+  base_url TEXT NOT NULL,     -- مثلا https://panel.example.com:8000
+  api_key  TEXT NOT NULL DEFAULT '',  -- کلید pg_key_... (اولویت با این است)
+  username TEXT NOT NULL DEFAULT '',
+  password TEXT NOT NULL DEFAULT '',
+  group_ids TEXT NOT NULL DEFAULT '', -- آیدی گروه‌ها با کاما (اختیاری)
+  active   INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS admins(
+  user_id INTEGER PRIMARY KEY  -- ادمین‌های کمکی (علاوه بر مالک)
+);
 """
 
 DEFAULT_SETTINGS = {
     "card_number": "",      # شماره کارت برای واریز دستی
     "card_holder": "",      # نام صاحب کارت
     "support_text": "برای پشتیبانی از دکمه «🆘 پشتیبانی» یک تیکت ثبت کن.",
+    "trial_enabled": "1",   # پلن تست روشن/خاموش
+    "trial_days": "1",      # مدت تست به روز
+    "trial_volume_gb": "5", # حجم تست به گیگ
+    "referral_enabled": "1",
+    "referral_days": "3",   # هدیه دعوت‌کننده به روز
+    "force_enabled": "0",   # جوین اجباری
+    "force_channel": "",    # آیدی/یوزرنیم کانال برای چک عضویت
+    "force_url": "",        # لینک عضویت
 }
 
 
@@ -99,8 +143,28 @@ def init_db(path: str) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with _lock, sqlite3.connect(path, timeout=30) as con:
         con.executescript(SCHEMA)
+        _migrate(con)
         for k, v in DEFAULT_SETTINGS.items():
             con.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)", (k, v))
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    """افزودن ستون‌های نسخه‌های جدید به دیتابیس‌های قدیمی."""
+    def cols(table: str) -> set:
+        return {r[1] for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    def ensure(table: str, column: str, ddl: str) -> None:
+        if column not in cols(table):
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    ensure("users", "trial_used", "INTEGER NOT NULL DEFAULT 0")
+    ensure("users", "referred_by", "INTEGER NOT NULL DEFAULT 0")
+    ensure("users", "bonus_days", "INTEGER NOT NULL DEFAULT 0")
+    ensure("plans", "panel_id", "INTEGER NOT NULL DEFAULT 0")
+    ensure("subscriptions", "panel_id", "INTEGER NOT NULL DEFAULT 0")
+    ensure("subscriptions", "panel_username", "TEXT NOT NULL DEFAULT ''")
+    ensure("subscriptions", "sub_link", "TEXT NOT NULL DEFAULT ''")
+    ensure("orders", "code", "TEXT NOT NULL DEFAULT ''")
 
 
 def _connect() -> sqlite3.Connection:
@@ -182,7 +246,7 @@ def get_plan(plan_id: int) -> dict | None:
 
 
 def update_plan(plan_id: int, **fields) -> None:
-    allowed = {"title", "days", "volume_gb", "price", "active"}
+    allowed = {"title", "days", "volume_gb", "price", "active", "panel_id"}
     sets = ", ".join(f"{k}=?" for k in fields if k in allowed)
     if sets:
         _exec(f"UPDATE plans SET {sets} WHERE id=?",
@@ -248,11 +312,14 @@ def template_server() -> dict | None:
 
 # ---------------------------------------------------------------- اشتراک‌ها
 def create_subscription(user_id: int, plan_id: int, server_name: str,
-                        config_text: str, days: int) -> int:
+                        config_text: str, days: int, panel_id: int = 0,
+                        panel_username: str = "", sub_link: str = "") -> int:
     t = now()
     return _exec("""INSERT INTO subscriptions(user_id, plan_id, server_name, config_text,
-                    starts_at, expires_at) VALUES(?, ?, ?, ?, ?, ?)""",
-                 (user_id, plan_id, server_name, config_text, t, t + days * 86400))
+                    starts_at, expires_at, panel_id, panel_username, sub_link)
+                    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 (user_id, plan_id, server_name, config_text, t, t + days * 86400,
+                  panel_id, panel_username, sub_link))
 
 
 def active_subscriptions(user_id: int) -> list[dict]:
@@ -293,10 +360,10 @@ def deactivate_expired() -> list[dict]:
 
 # ---------------------------------------------------------------- سفارش‌ها
 def create_order(user_id: int, plan_id: int, amount: int,
-                 receipt_file_id: str = "", receipt_text: str = "") -> int:
-    return _exec("""INSERT INTO orders(user_id, plan_id, amount, receipt_file_id, receipt_text, created_at)
-                    VALUES(?, ?, ?, ?, ?, ?)""",
-                 (user_id, plan_id, amount, receipt_file_id, receipt_text, now()))
+                 receipt_file_id: str = "", receipt_text: str = "", code: str = "") -> int:
+    return _exec("""INSERT INTO orders(user_id, plan_id, amount, receipt_file_id, receipt_text, code, created_at)
+                    VALUES(?, ?, ?, ?, ?, ?, ?)""",
+                 (user_id, plan_id, amount, receipt_file_id, receipt_text, code, now()))
 
 
 def get_order(order_id: int) -> dict | None:
@@ -365,3 +432,179 @@ def get_setting(key: str) -> str:
 def set_setting(key: str, value: str) -> None:
     _exec("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
           (key, value))
+
+
+# ---------------------------------------------------------------- متن‌های قابل ویرایش
+def get_text(key: str) -> str | None:
+    r = _one("SELECT value FROM texts WHERE key=?", (key,))
+    return r["value"] if r else None
+
+
+def set_text(key: str, value: str) -> None:
+    _exec("INSERT INTO texts(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          (key, value))
+
+
+def all_texts() -> dict:
+    return {r["key"]: r["value"] for r in _all("SELECT key, value FROM texts")}
+
+
+# ---------------------------------------------------------------- دکمه‌های شیشه‌ای منو
+def add_menu_button(text: str, url: str) -> int:
+    mx = _one("SELECT COALESCE(MAX(pos),0) m FROM menu_buttons")["m"]
+    return _exec("INSERT INTO menu_buttons(text, url, pos) VALUES(?, ?, ?)", (text, url, mx + 1))
+
+
+def list_menu_buttons(active_only: bool = False) -> list[dict]:
+    sql = "SELECT * FROM menu_buttons" + (" WHERE active=1" if active_only else "") + " ORDER BY pos, id"
+    return _all(sql)
+
+
+def get_menu_button(bid: int) -> dict | None:
+    return _one("SELECT * FROM menu_buttons WHERE id=?", (bid,))
+
+
+def toggle_menu_button(bid: int) -> None:
+    _exec("UPDATE menu_buttons SET active=1-active WHERE id=?", (bid,))
+
+
+def delete_menu_button(bid: int) -> None:
+    _exec("DELETE FROM menu_buttons WHERE id=?", (bid,))
+
+
+# ---------------------------------------------------------------- ایموجی پریمیوم
+def add_emoji(name: str, emoji_id: str) -> None:
+    _exec("INSERT INTO premium_emoji(name, emoji_id) VALUES(?, ?) ON CONFLICT(name) DO UPDATE SET emoji_id=excluded.emoji_id",
+          (name.strip().lower(), emoji_id))
+
+
+def list_emoji() -> list[dict]:
+    return _all("SELECT * FROM premium_emoji ORDER BY name")
+
+
+def get_emoji(name: str) -> str | None:
+    r = _one("SELECT emoji_id FROM premium_emoji WHERE name=?", (name.strip().lower(),))
+    return r["emoji_id"] if r else None
+
+
+def delete_emoji(name: str) -> None:
+    _exec("DELETE FROM premium_emoji WHERE name=?", (name,))
+
+
+# ---------------------------------------------------------------- کد تخفیف
+def add_discount(code: str, percent: int, max_uses: int = 0, expires_at: int = 0) -> None:
+    _exec("INSERT INTO discount_codes(code, percent, max_uses, expires_at) VALUES(?, ?, ?, ?) "
+          "ON CONFLICT(code) DO UPDATE SET percent=excluded.percent, max_uses=excluded.max_uses, "
+          "expires_at=excluded.expires_at, active=1",
+          (code.strip().upper(), percent, max_uses, expires_at))
+
+
+def list_discounts() -> list[dict]:
+    return _all("SELECT * FROM discount_codes ORDER BY code")
+
+
+def get_discount(code: str) -> dict | None:
+    return _one("SELECT * FROM discount_codes WHERE code=?", (code.strip().upper(),))
+
+
+def delete_discount(code: str) -> None:
+    _exec("DELETE FROM discount_codes WHERE code=?", (code,))
+
+
+def toggle_discount(code: str) -> None:
+    _exec("UPDATE discount_codes SET active=1-active WHERE code=?", (code,))
+
+
+def use_discount(code: str) -> None:
+    _exec("UPDATE discount_codes SET used=used+1 WHERE code=?", (code,))
+
+
+def valid_discount(code: str) -> dict | None:
+    """کد معتبر و قابل استفاده؟ (فعال + منقضی‌نشده + ظرفیت باقی‌مانده)"""
+    d = get_discount(code)
+    if not d or not d["active"]:
+        return None
+    if d["expires_at"] and d["expires_at"] <= now():
+        return None
+    if d["max_uses"] and d["used"] >= d["max_uses"]:
+        return None
+    return d
+
+
+# ---------------------------------------------------------------- پنل‌های پاسارگارد
+def add_panel(name: str, base_url: str, api_key: str = "", username: str = "",
+              password: str = "", group_ids: str = "") -> int:
+    return _exec("INSERT INTO panels(name, base_url, api_key, username, password, group_ids) "
+                 "VALUES(?, ?, ?, ?, ?, ?)",
+                 (name, base_url.rstrip("/"), api_key, username, password, group_ids))
+
+
+def list_panels() -> list[dict]:
+    return _all("SELECT * FROM panels ORDER BY id")
+
+
+def get_panel(panel_id: int) -> dict | None:
+    return _one("SELECT * FROM panels WHERE id=?", (panel_id,))
+
+
+def update_panel(panel_id: int, **fields) -> None:
+    allowed = {"name", "base_url", "api_key", "username", "password", "group_ids", "active"}
+    sets = ", ".join(f"{k}=?" for k in fields if k in allowed)
+    if sets:
+        _exec(f"UPDATE panels SET {sets} WHERE id=?",
+              tuple(fields[k] for k in fields if k in allowed) + (panel_id,))
+
+
+def delete_panel(panel_id: int) -> None:
+    _exec("DELETE FROM panels WHERE id=?", (panel_id,))
+
+
+# ---------------------------------------------------------------- ادمین‌های کمکی
+def add_admin(user_id: int) -> None:
+    _exec("INSERT OR IGNORE INTO admins(user_id) VALUES(?)", (user_id,))
+
+
+def remove_admin(user_id: int) -> None:
+    _exec("DELETE FROM admins WHERE user_id=?", (user_id,))
+
+
+def list_admins() -> list[int]:
+    return [r["user_id"] for r in _all("SELECT user_id FROM admins ORDER BY user_id")]
+
+
+def is_extra_admin(user_id: int) -> bool:
+    return _one("SELECT 1 FROM admins WHERE user_id=?", (user_id,)) is not None
+
+
+# ---------------------------------------------------------------- تست و دعوت
+def set_trial_used(user_id: int) -> None:
+    _exec("UPDATE users SET trial_used=1 WHERE id=?", (user_id,))
+
+
+def set_referred(user_id: int, by_id: int) -> None:
+    _exec("UPDATE users SET referred_by=? WHERE id=? AND referred_by=0", (by_id, user_id))
+
+
+def count_referrals(user_id: int) -> int:
+    return _one("SELECT COUNT(*) n FROM users WHERE referred_by=?", (user_id,))["n"]
+
+
+def has_approved_order(user_id: int) -> bool:
+    return _one("SELECT 1 FROM orders WHERE user_id=? AND status='approved'", (user_id,)) is not None
+
+
+def add_bonus_days(user_id: int, days: int) -> None:
+    _exec("UPDATE users SET bonus_days=bonus_days+? WHERE id=?", (days, user_id))
+
+
+def take_bonus_days(user_id: int) -> int:
+    u = get_user(user_id)
+    b = (u or {}).get("bonus_days", 0) or 0
+    if b:
+        _exec("UPDATE users SET bonus_days=0 WHERE id=?", (user_id,))
+    return b
+
+
+def first_active_panel() -> dict | None:
+    ps = [p for p in list_panels() if p["active"]]
+    return ps[0] if ps else None

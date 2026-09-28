@@ -17,9 +17,13 @@ from aiogram import html
 import backup as backup_mod
 import database as db
 import keyboards as kb
-from config import is_admin
+from config import get_config, is_admin
 from database import now
-from utils import fmt_dt, fmt_left, fmt_price, fmt_volume, render_template, sub_email
+from panels import PanelError, PasarPanel
+import premium
+from texts import T, all_keys, label_of, reload as reload_texts
+from utils import (fmt_dt, fmt_left, fmt_price, fmt_volume, panel_uname,
+                   render_template, sub_email)
 
 log = logging.getLogger("vpnbot.admin")
 router = Router()
@@ -179,35 +183,96 @@ async def cb_order_detail(c: CallbackQuery) -> None:
     await c.message.edit_text(
         f"🧾 <b>سفارش #{o['id']}</b> — {o['status']}\n\n"
         f"👤 {html.quote(o['full_name'] or '')} (@{html.quote(o['username'] or '-')}) <code>{o['user_id']}</code>\n"
-        f"💎 {html.quote(o['plan_title'])} — {fmt_price(o['amount'])}\n"
+        f"💎 {html.quote(o['plan_title'])} — {fmt_price(o['amount'])}"
+        + (f"\n🎟️ کد: <code>{html.quote(o['code'])}</code>" if o["code"] else "") + "\n"
         f"🕐 {fmt_dt(o['created_at'])}",
         reply_markup=kb.order_decide(o["id"]),
     )
     await c.answer()
 
 
+async def _reward_referrer(bot, ref_id: int) -> None:
+    """هدیه اولین خرید دعوتی: تمدید اشتراک فعال، وگرنه بونوس محفوظ."""
+    days = int(db.get_setting("referral_days") or 3)
+    if db.get_setting("referral_enabled") != "1" or days <= 0:
+        return
+    subs = db.active_subscriptions(ref_id)
+    if subs:
+        db.extend_subscription(subs[-1]["id"], days)
+        extra = ""
+    else:
+        db.add_bonus_days(ref_id, days)
+        extra = "\nچون اشتراک فعالی نداری، این هدیه محفوظ ماند و به خرید بعدیت اضافه می‌شود 🎖️"
+    try:
+        await bot.send_message(ref_id, T("msg_ref_bonus", days=days) + extra)
+    except Exception:
+        log.warning("cannot notify referrer %d", ref_id)
+
+
 @router.callback_query(F.data.startswith("ord:ok:"))
 async def cb_order_ok(c: CallbackQuery) -> None:
-    """تایید سفارش: تمدید اشتراک فعال یا ساخت اشتراک تازه + تحویل کانفیگ."""
+    """تایید سفارش: تمدید یا ساخت تازه + تحویل دستی/پنلی + هدیه دعوت."""
     if not await _admin_ok(c):
         return
     o = db.get_order(int(c.data.split(":")[2]))
     if not o or o["status"] != "pending":
         await c.answer("این سفارش قبلاً تعیین‌تکلیف شده.", show_alert=True)
         return
+    plan = db.get_plan(o["plan_id"])
+    panel = db.get_panel(plan["panel_id"]) if plan and plan["panel_id"] else None
+    if panel and not panel["active"]:
+        panel = None
+    first_buy = not db.has_approved_order(o["user_id"])
+    bonus = db.take_bonus_days(o["user_id"])  # هدیه‌های دعوت محفوظ
+    total_days = o["plan_days"] + bonus
 
-    # ۱) اگر اشتراک فعال دارد → تمدید همان
+    # ۱) اگر اشتراک فعال دارد → تمدید همان (+ تمدید در پنل)
     subs = db.active_subscriptions(o["user_id"])
     if subs:
         sub = subs[-1]  # دیرترین انقضا
-        db.extend_subscription(sub["id"], o["plan_days"])
-        db.set_order_status(o["id"], "approved")
+        db.extend_subscription(sub["id"], total_days)
         s = db.get_subscription(sub["id"])
+        if panel and sub["panel_id"] == panel["id"] and sub["panel_username"]:
+            try:
+                cli = PasarPanel(panel["base_url"], panel["api_key"],
+                                 panel["username"], panel["password"])
+                await cli.extend_user(sub["panel_username"], s["expires_at"])
+            except PanelError as e:
+                log.warning("panel extend failed for order %d: %s", o["id"], e)
+        db.set_order_status(o["id"], "approved")
         user_msg = (f"✅ پرداختت تایید و اشتراکت <b>تمدید</b> شد!\n\n"
                     f"⏳ انقضای جدید: {fmt_dt(s['expires_at'])}\n"
-                    f"⏰ باقی‌مانده: {fmt_left(s['expires_at'], now())}")
+                    f"⏰ باقی‌مانده: {fmt_left(s['expires_at'], now())}"
+                    + (f"\n\n🎖️ {bonus} روز هدیه دعوت هم بهش اضافه شد!" if bonus else ""))
+    elif panel:
+        # ۲) ساخت خودکار یوزر در پنل پاسارگارد
+        uname = panel_uname(o["user_id"], f"o{o['id']}")
+        try:
+            cli = PasarPanel(panel["base_url"], panel["api_key"],
+                             panel["username"], panel["password"])
+            gids = [int(x) for x in (panel["group_ids"] or "").split(",") if x.strip().isdigit()]
+            resp = await cli.create_user(
+                uname, now() + total_days * 86400,
+                int((plan["volume_gb"] or 0) * 1024 ** 3),
+                note=f"order {o['id']} user {o['user_id']}", group_ids=gids)
+        except PanelError as e:
+            db.add_bonus_days(o["user_id"], bonus)  # برگرداندن بونوس
+            await c.answer(f"❌ خطای پنل: {e}", show_alert=True)
+            return
+        link = cli.absolute_sub_url(resp)
+        db.create_subscription(o["user_id"], o["plan_id"], panel["name"], link,
+                               total_days, panel_id=panel["id"],
+                               panel_username=uname, sub_link=link)
+        db.set_order_status(o["id"], "approved")
+        user_msg = (f"✅ پرداختت تایید شد! اشتراک فعال شد 🎉\n\n"
+                    f"💎 {html.quote(o['plan_title'])}\n"
+                    f"🖥️ سرور: {html.quote(panel['name'])}\n"
+                    f"⏳ انقضا: {fmt_left(now() + total_days * 86400, now())}"
+                    + (f"\n🎖️ شامل {bonus} روز هدیه دعوت!" if bonus else "") + "\n\n"
+                    f"🔗 لینک اشتراکت:\n<code>{html.quote(link)}</code>\n\n"
+                    "از بخش «📦 اشتراک‌های من» هم می‌توانی QR آن را بگیری 📷")
     else:
-        # ۲) وگرنه تخصیص کانفیگ: اول از استخر آماده، بعد از قالب سرور
+        # ۳) دستی: اول از استخر آماده، بعد از قالب سرور
         cfg, server_name = None, ""
         free = db.get_free_config()
         if free:
@@ -219,16 +284,24 @@ async def cb_order_ok(c: CallbackQuery) -> None:
                 cfg = render_template(srv["template"], sub_email(o["user_id"]))
                 server_name = srv["name"]
         if not cfg:
+            db.add_bonus_days(o["user_id"], bonus)  # برگرداندن بونوس
             await c.answer("❌ کانفیگ آزادی نیست! اول از «سرورها» کانفیگ اضافه کن.",
                            show_alert=True)
             return
-        db.create_subscription(o["user_id"], o["plan_id"], server_name, cfg, o["plan_days"])
+        db.create_subscription(o["user_id"], o["plan_id"], server_name, cfg, total_days)
         db.set_order_status(o["id"], "approved")
         user_msg = (f"✅ پرداختت تایید شد! اشتراک فعال شد 🎉\n\n"
                     f"💎 {html.quote(o['plan_title'])}\n"
                     f"🖥️ سرور: {html.quote(server_name)}\n"
-                    f"⏳ انقضا: {fmt_left(now() + o['plan_days'] * 86400, now())}\n\n"
+                    f"⏳ انقضا: {fmt_left(now() + total_days * 86400, now())}"
+                    + (f"\n🎖️ شامل {bonus} روز هدیه دعوت!" if bonus else "") + "\n\n"
                     f"📋 کانفیگت:\n<code>{html.quote(cfg[:3800])}</code>")
+
+    # ۴) هدیه دعوت‌کننده در اولین خرید
+    if first_buy:
+        u = db.get_user(o["user_id"])
+        if u and u["referred_by"]:
+            await _reward_referrer(c.bot, u["referred_by"])
 
     try:
         await c.bot.send_message(o["user_id"], user_msg)
@@ -353,6 +426,27 @@ async def cb_plan_router(c: CallbackQuery, state: FSMContext) -> None:
                                   reply_markup=kb.plan_edit_fields(int(parts[2])))
         await c.answer()
         return
+    if action == "panel":
+        p = db.get_plan(int(parts[2]))
+        if not p:
+            await c.answer("یافت نشد.", show_alert=True)
+            return
+        await c.message.edit_text("🛡️ تحویل خودکار این پلن از کدام پنل انجام شود؟",
+                                  reply_markup=kb.plan_panel_select(
+                                      p["id"], db.list_panels(), p["panel_id"] or 0))
+        await c.answer()
+        return
+    if action == "pset":
+        db.update_plan(int(parts[2]), panel_id=int(parts[3]))
+        p = db.get_plan(int(parts[2]))
+        pn = db.get_panel(p["panel_id"]) if p["panel_id"] else None
+        await c.message.edit_text(
+            f"💎 <b>{html.quote(p['title'])}</b>\n⏱️ {p['days']} روز | 📊 {fmt_volume(p['volume_gb'])} | "
+            f"💰 {fmt_price(p['price'])}\n{'✅ فعال' if p['active'] else '🚫 غیرفعال'}"
+            f"\n🛡️ تحویل: {html.quote(pn['name']) if pn else '🤝 دستی'}",
+            reply_markup=kb.admin_plan_detail(p))
+        await c.answer("ذخیره شد ✅")
+        return
     p = None
     if action in ("tgl", "del"):
         pid = int(parts[2])
@@ -369,9 +463,11 @@ async def cb_plan_router(c: CallbackQuery, state: FSMContext) -> None:
     if not p:
         await c.answer("یافت نشد.", show_alert=True)
         return
+    pn = db.get_panel(p["panel_id"]) if p["panel_id"] else None
     await c.message.edit_text(
         f"💎 <b>{html.quote(p['title'])}</b>\n⏱️ {p['days']} روز | 📊 {fmt_volume(p['volume_gb'])} | "
-        f"💰 {fmt_price(p['price'])}\n{'✅ فعال' if p['active'] else '🚫 غیرفعال'}",
+        f"💰 {fmt_price(p['price'])}\n{'✅ فعال' if p['active'] else '🚫 غیرفعال'}"
+        f"\n🛡️ تحویل: {html.quote(pn['name']) if pn else '🤝 دستی'}",
         reply_markup=kb.admin_plan_detail(p))
     await c.answer()
 
@@ -441,6 +537,8 @@ def _user_text(u: dict) -> str:
         f"🆔 <code>{u['id']}</code>\n"
         f"{'🚫 مسدود' if u['banned'] else '✅ عادی'}\n"
         f"🕐 عضویت: {fmt_dt(u['created_at'])}\n"
+        f"🎁 تست: {'گرفته ✅' if u['trial_used'] else 'نگرفته'} | "
+        f"🎖️ بونوس محفوظ: {u['bonus_days']} روز | 👥 دعوتی‌ها: {db.count_referrals(u['id'])}\n"
         f"📦 اشتراک‌های فعال:\n" + "\n".join(sub_lines)
     )
 
@@ -825,3 +923,591 @@ async def msg_restore_file(m: Message, state: FSMContext) -> None:
             os.remove(tmp)
         except OSError:
             pass
+
+
+# ---------------------------------------------------------------- متن‌ها و دکمه‌ها
+class TextEdit(StatesGroup):
+    value = State()
+
+
+@router.callback_query(F.data == "adm:texts")
+async def cb_texts(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    await c.message.edit_text("✏️ <b>ویرایش متن‌ها</b>\nکدام دسته؟\n\n💡 در متن‌ها می‌توانی از <code>{e:name}</code> برای ایموجی پریمیوم استفاده کنی.",
+                              reply_markup=kb.texts_cats())
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("txtc:"))
+async def cb_texts_cat(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    prefix = "btn_" if c.data == "txtc:btn" else "msg_"
+    keys = [k for k in all_keys() if k.startswith(prefix)]
+    await c.message.edit_text("✏️ یکی را انتخاب کن:", reply_markup=kb.texts_list(
+        keys, {k: label_of(k) for k in keys}))
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("txt:"))
+async def cb_text_edit(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    key = c.data.split(":")[1]
+    if key not in all_keys():
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await state.set_state(TextEdit.value)
+    await state.update_data(key=key)
+    cur = db.get_text(key) or T(key)
+    await c.message.edit_text(
+        f"✏️ <b>{label_of(key)}</b> — <code>{key}</code>\n\nمتن فعلی:\n{html.quote(cur)}\n\n"
+        "متن جدید را بفرست (placeholderهایی مثل {name} را نگه دار):",
+        reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(TextEdit.value, F.text)
+async def st_text_value(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    if len(m.text) > 2000:
+        await m.answer("خیلی طولانی است (حداکثر ۲۰۰۰ کاراکتر):")
+        return
+    d = await state.get_data()
+    db.set_text(d["key"], m.text.strip())
+    reload_texts()
+    await state.clear()
+    await m.answer(f"✅ «{label_of(d['key'])}» ذخیره شد.", reply_markup=kb.back_admin())
+
+
+# ---------------------------------------------------------------- دکمه‌های شیشه‌ای
+class MBtnAdd(StatesGroup):
+    text = State(); url = State()
+
+
+@router.callback_query(F.data == "adm:mbtn")
+async def cb_mbtn(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    await c.message.edit_text("🔗 <b>دکمه‌های شیشه‌ای منوی اصلی</b>\n(لینک‌دار: کانال، پشتیبانی، سایت...)",
+                              reply_markup=kb.menu_buttons_list(db.list_menu_buttons()))
+    await c.answer()
+
+
+@router.callback_query(F.data == "mbtn:add")
+async def cb_mbtn_add(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    await state.set_state(MBtnAdd.text)
+    await c.message.edit_text("۱️⃣ متن دکمه؟", reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(MBtnAdd.text, F.text)
+async def st_mbtn_text(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    await state.update_data(text=m.text.strip()[:60])
+    await state.set_state(MBtnAdd.url)
+    await m.answer("۲️⃣ لینک دکمه؟ (https://... یا tg://...)")
+
+
+@router.message(MBtnAdd.url, F.text)
+async def st_mbtn_url(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    url = m.text.strip()
+    if not url.startswith(("http://", "https://", "tg://")):
+        await m.answer("لینک معتبر نیست (با http یا tg شروع شود):")
+        return
+    d = await state.get_data()
+    db.add_menu_button(d["text"], url)
+    await state.clear()
+    await m.answer("✅ دکمه اضافه شد.", reply_markup=kb.menu_buttons_list(db.list_menu_buttons()))
+
+
+@router.callback_query(F.data.startswith("mbtn:"))
+async def cb_mbtn_router(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    if c.data == "mbtn:add":
+        return
+    parts = c.data.split(":")
+    if parts[1] in ("tgl", "del"):
+        bid = int(parts[2])
+        if parts[1] == "del":
+            db.delete_menu_button(bid)
+            await c.message.edit_text("🗑️ حذف شد.", reply_markup=kb.menu_buttons_list(db.list_menu_buttons()))
+        else:
+            db.toggle_menu_button(bid)
+            b = db.get_menu_button(bid)
+            await c.message.edit_text(f"🔗 <b>{html.quote(b['text'])}</b>\n{html.quote(b['url'])}\n"
+                                      f"{'✅ فعال' if b['active'] else '🚫 غیرفعال'}",
+                                      reply_markup=kb.menu_button_detail(bid))
+        await c.answer()
+        return
+    b = db.get_menu_button(int(parts[1]))
+    if not b:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await c.message.edit_text(f"🔗 <b>{html.quote(b['text'])}</b>\n{html.quote(b['url'])}\n"
+                              f"{'✅ فعال' if b['active'] else '🚫 غیرفعال'}",
+                              reply_markup=kb.menu_button_detail(b["id"]))
+    await c.answer()
+
+
+# ---------------------------------------------------------------- ایموجی پریمیوم
+class EmoAdd(StatesGroup):
+    emoji = State(); name = State()
+
+
+@router.callback_query(F.data == "adm:emoji")
+async def cb_emoji(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    es = db.list_emoji()
+    await c.message.edit_text(
+        "✨ <b>ایموجی‌های پریمیوم</b>\n"
+        f"ثبت‌شده: {len(es)}\n\nبا «افزودن»، اول یک پیام حاوی ایموجی پریمیوم بفرست/فوروارد کن، بعد یک نام کوتاه بده.\n"
+        "بعد در متن‌ها با <code>{e:نام}</code> استفاده‌اش کن.",
+        reply_markup=kb.emoji_list(es))
+    await c.answer()
+
+
+@router.callback_query(F.data == "emo:add")
+async def cb_emo_add(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    await state.set_state(EmoAdd.emoji)
+    await c.message.edit_text("۱️⃣ یک پیام که ایموجی پریمیوم دارد بفرست یا فوروارد کن:",
+                              reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(EmoAdd.emoji)
+async def st_emo_emoji(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    ids = premium.extract_ids(m)
+    if not ids:
+        await m.answer("در این پیام ایموجی پریمیومی پیدا نکردم! یکی دیگر بفرست:")
+        return
+    await state.update_data(emoji_id=ids[0])
+    await state.set_state(EmoAdd.name)
+    await m.answer("۲️⃣ یک نام کوتاه انگلیسی بده (مثلا: fire):")
+
+
+@router.message(EmoAdd.name, F.text)
+async def st_emo_name(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    import re
+    name = m.text.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_]{1,24}", name):
+        await m.answer("فقط حروف کوچک انگلیسی، عدد و _ (حداکثر ۲۴ کاراکتر):")
+        return
+    d = await state.get_data()
+    db.add_emoji(name, d["emoji_id"])
+    await state.clear()
+    await m.answer(f"✅ ثبت شد! حالا در متن‌ها از <code>{{e:{name}}}</code> استفاده کن.",
+                   reply_markup=kb.emoji_list(db.list_emoji()))
+
+
+@router.callback_query(F.data.startswith("emo:del:"))
+async def cb_emo_del(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    db.delete_emoji(c.data.split(":")[2])
+    await c.message.edit_text("🗑️ حذف شد.", reply_markup=kb.emoji_list(db.list_emoji()))
+    await c.answer()
+
+
+# ---------------------------------------------------------------- کدهای تخفیف
+class DiscAdd(StatesGroup):
+    code = State(); percent = State(); maxuses = State()
+
+
+@router.callback_query(F.data == "adm:disc")
+async def cb_disc(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    await c.message.edit_text("🎟️ <b>کدهای تخفیف:</b>", reply_markup=kb.discounts_list(db.list_discounts()))
+    await c.answer()
+
+
+@router.callback_query(F.data == "disc:add")
+async def cb_disc_add(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    await state.set_state(DiscAdd.code)
+    await c.message.edit_text("۱️⃣ متن کد؟ (انگلیسی، مثلا WELCOME20)", reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(DiscAdd.code, F.text)
+async def st_disc_code(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    import re
+    code = m.text.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9_]{3,24}", code):
+        await m.answer("فقط حروف انگلیسی/عدد (۳ تا ۲۴ کاراکتر):")
+        return
+    await state.update_data(code=code)
+    await state.set_state(DiscAdd.percent)
+    await m.answer("۲️⃣ چند درصد؟ (۱ تا ۱۰۰)")
+
+
+@router.message(DiscAdd.percent, F.text)
+async def st_disc_percent(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    if not m.text.strip().isdigit() or not 1 <= int(m.text) <= 100:
+        await m.answer("عدد ۱ تا ۱۰۰:")
+        return
+    await state.update_data(percent=int(m.text))
+    await state.set_state(DiscAdd.maxuses)
+    await m.answer("۳️⃣ سقف استفاده؟ (۰ = نامحدود)")
+
+
+@router.message(DiscAdd.maxuses, F.text)
+async def st_disc_maxuses(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    if not m.text.strip().isdigit():
+        await m.answer("فقط عدد (۰ = نامحدود):")
+        return
+    d = await state.get_data()
+    db.add_discount(d["code"], d["percent"], int(m.text))
+    await state.clear()
+    await m.answer(f"✅ کد <code>{d['code']}</code> (٪{d['percent']}) ساخته شد.",
+                   reply_markup=kb.discounts_list(db.list_discounts()))
+
+
+@router.callback_query(F.data.startswith("disc:adm:"))
+async def cb_disc_view(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    d = db.get_discount(c.data.split(":")[2])
+    if not d:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await c.message.edit_text(
+        f"🎟️ <code>{d['code']}</code>\n٪{d['percent']} | استفاده: {d['used']}/{d['max_uses'] or '∞'}\n"
+        f"{'✅ فعال' if d['active'] else '🚫 غیرفعال'}",
+        reply_markup=kb.discount_detail(d["code"]))
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith(("disc:tgl:", "disc:del:")))
+async def cb_disc_router(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    code = c.data.split(":")[2]
+    if c.data.startswith("disc:del:"):
+        db.delete_discount(code)
+        await c.message.edit_text("🗑️ حذف شد.", reply_markup=kb.discounts_list(db.list_discounts()))
+    else:
+        db.toggle_discount(code)
+        d = db.get_discount(code)
+        await c.message.edit_text(
+            f"🎟️ <code>{d['code']}</code>\n٪{d['percent']} | استفاده: {d['used']}/{d['max_uses'] or '∞'}\n"
+            f"{'✅ فعال' if d['active'] else '🚫 غیرفعال'}",
+            reply_markup=kb.discount_detail(d["code"]))
+    await c.answer()
+
+
+# ---------------------------------------------------------------- پنل‌های پاسارگارد
+class PnlAdd(StatesGroup):
+    name = State(); url = State(); key = State()
+    username = State(); password = State(); groups = State()
+
+
+def _panel_text(p: dict) -> str:
+    auth = "🔑 کلید API" if p["api_key"] else (f"👤 یوزر/پسورد ({html.quote(p['username'] or '-')})" if p["username"] else "⚠️ بدون احراز هویت")
+    n = sum(1 for x in db.list_plans() if x["panel_id"] == p["id"])
+    return (f"🛡️ <b>{html.quote(p['name'])}</b>\n"
+            f"🌐 <code>{html.quote(p['base_url'])}</code>\n"
+            f"{auth}\n"
+            f"👥 گروه‌ها: {html.quote(p['group_ids'] or '—')}\n"
+            f"💎 پلن‌های متصل: {n}\n"
+            f"{'✅ فعال' if p['active'] else '🚫 غیرفعال'}")
+
+
+@router.callback_query(F.data == "adm:panels")
+async def cb_panels(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    await c.message.edit_text("🛡️ <b>پنل‌های پاسارگارد</b>\n(ساخت خودکار یوزر + لینک سابسکرایبشن)",
+                              reply_markup=kb.panels_list(db.list_panels()))
+    await c.answer()
+
+
+@router.callback_query(F.data == "pnl:add")
+async def cb_pnl_add(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    await state.set_state(PnlAdd.name)
+    await c.message.edit_text("۱️⃣ نام پنل؟ (مثلا: پاسارگارد آلمان)", reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(PnlAdd.name, F.text)
+async def st_pnl_name(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    await state.update_data(name=m.text.strip()[:60])
+    await state.set_state(PnlAdd.url)
+    await m.answer("۲️⃣ آدرس پنل؟ (مثلا: https://panel.example.com:8000)")
+
+
+@router.message(PnlAdd.url, F.text)
+async def st_pnl_url(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    url = m.text.strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        await m.answer("آدرس باید با http شروع شود:")
+        return
+    await state.update_data(url=url)
+    await state.set_state(PnlAdd.key)
+    await m.answer("۳️⃣ کلید API پنل؟ (شروعش pg_key_ است)\nاگر نداری بنویس <code>-</code> تا با یوزر/پسورد وصل شویم:")
+
+
+@router.message(PnlAdd.key, F.text)
+async def st_pnl_key(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    key = m.text.strip()
+    if key == "-":
+        await state.update_data(key="")
+        await state.set_state(PnlAdd.username)
+        await m.answer("۴️⃣ یوزرنیم ادمین پنل؟")
+    else:
+        await state.update_data(key=key, username="", password="")
+        await state.set_state(PnlAdd.groups)
+        await m.answer("۴️⃣ آیدی گروه‌های پنل؟ (با کاما جدا کن؛ اگر نمی‌دانی بنویس <code>-</code>)")
+
+
+@router.message(PnlAdd.username, F.text)
+async def st_pnl_username(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    await state.update_data(username=m.text.strip())
+    await state.set_state(PnlAdd.password)
+    await m.answer("۵️⃣ پسورد ادمین پنل؟")
+
+
+@router.message(PnlAdd.password, F.text)
+async def st_pnl_password(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    await state.update_data(password=m.text.strip())
+    await state.set_state(PnlAdd.groups)
+    await m.answer("۶️⃣ آیدی گروه‌های پنل؟ (با کاما جدا کن؛ اگر نمی‌دانی بنویس <code>-</code>)")
+
+
+@router.message(PnlAdd.groups, F.text)
+async def st_pnl_groups(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    d = await state.get_data()
+    groups = "" if m.text.strip() == "-" else m.text.strip()
+    pid = db.add_panel(d["name"], d["url"], d.get("key", ""),
+                       d.get("username", ""), d.get("password", ""), groups)
+    await state.clear()
+    p = db.get_panel(pid)
+    try:
+        await m.bot.delete_message(m.chat.id, m.message_id - 1)
+    except Exception:
+        pass
+    await m.answer("✅ پنل ثبت شد. حالا «تست اتصال» بزن:", reply_markup=kb.panel_detail(pid))
+    await m.answer(_panel_text(p), reply_markup=kb.panel_detail(pid))
+
+
+@router.callback_query(F.data.startswith("pnl:"))
+async def cb_pnl_router(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    if c.data == "pnl:add":
+        return
+    parts = c.data.split(":")
+    if parts[1] in ("tgl", "del", "test"):
+        pid = int(parts[2])
+        if parts[1] == "del":
+            for x in db.list_plans():
+                if x["panel_id"] == pid:
+                    db.update_plan(x["id"], panel_id=0)
+            db.delete_panel(pid)
+            await c.message.edit_text("🗑️ پنل حذف شد (پلن‌هایش دستی شدند).",
+                                      reply_markup=kb.panels_list(db.list_panels()))
+            await c.answer()
+            return
+        if parts[1] == "tgl":
+            p = db.get_panel(pid)
+            db.update_panel(pid, active=0 if p["active"] else 1)
+            await c.message.edit_text(_panel_text(db.get_panel(pid)),
+                                      reply_markup=kb.panel_detail(pid))
+            await c.answer()
+            return
+        # test
+        p = db.get_panel(pid)
+        await c.answer("⏳ در حال تست...", show_alert=False)
+        try:
+            cli = PasarPanel(p["base_url"], p["api_key"], p["username"], p["password"])
+            who = await cli.test_connection()
+            await c.answer(f"✅ وصل شد! ({who})", show_alert=True)
+        except PanelError as e:
+            await c.answer(f"❌ {e}", show_alert=True)
+        return
+    p = db.get_panel(int(parts[1]))
+    if not p:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await c.message.edit_text(_panel_text(p), reply_markup=kb.panel_detail(pid))
+    await c.answer()
+
+
+# ---------------------------------------------------------------- مدیران
+class StaffAdd(StatesGroup):
+    user_id = State()
+
+
+@router.callback_query(F.data == "adm:staff")
+async def cb_staff(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    owner = get_config(interactive=False).admin_id
+    await c.message.edit_text("👑 <b>مدیران ربات</b>\n(مدیر کمکی به همه بخش‌های پنل دسترسی دارد)",
+                              reply_markup=kb.staff_list(db.list_admins(), owner))
+    await c.answer()
+
+
+@router.callback_query(F.data == "staff:add")
+async def cb_staff_add(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    await state.set_state(StaffAdd.user_id)
+    await c.message.edit_text("آیدی عددی مدیر جدید؟", reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(StaffAdd.user_id, F.text)
+async def st_staff_id(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    if not m.text.strip().isdigit():
+        await m.answer("فقط آیدی عددی:")
+        return
+    uid = int(m.text)
+    owner = get_config(interactive=False).admin_id
+    if uid == owner:
+        await m.answer("این آیدی خودِ مالک است!")
+        return
+    db.add_admin(uid)
+    await state.clear()
+    await m.answer(f"✅ {uid} مدیر شد.", reply_markup=kb.staff_list(db.list_admins(), owner))
+
+
+@router.callback_query(F.data.startswith("staff:del:"))
+async def cb_staff_del(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    db.remove_admin(int(c.data.split(":")[2]))
+    owner = get_config(interactive=False).admin_id
+    await c.message.edit_text("🗑️ دسترسی مدیر برداشته شد.",
+                              reply_markup=kb.staff_list(db.list_admins(), owner))
+    await c.answer()
+
+
+# ---------------------------------------------------------------- تنظیمات (تست/دعوت/جوین)
+class SetVal(StatesGroup):
+    value = State()
+
+
+_SET_KEYS = ("trial_enabled", "trial_days", "trial_volume_gb", "referral_enabled",
+             "referral_days", "force_enabled", "force_channel", "force_url")
+
+
+def _sets_kb():
+    return kb.settings_menu({k: db.get_setting(k) for k in _SET_KEYS})
+
+
+@router.callback_query(F.data == "adm:sets")
+async def cb_sets(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    await c.message.edit_text("⚙️ <b>تنظیمات:</b>", reply_markup=_sets_kb())
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("set:"))
+async def cb_set_router(c: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_ok(c):
+        return
+    action = c.data.split(":")[1]
+    toggles = {"trial_tgl": "trial_enabled", "ref_tgl": "referral_enabled",
+               "force_tgl": "force_enabled"}
+    if action in toggles:
+        k = toggles[action]
+        db.set_setting(k, "0" if db.get_setting(k) == "1" else "1")
+        if k == "force_enabled" and db.get_setting(k) == "1" and not db.get_setting("force_channel"):
+            await c.answer("⚠️ کانال تنظیم نشده! اول «کانال» را ثبت کن.", show_alert=True)
+        else:
+            await c.answer("انجام شد ✅")
+        await c.message.edit_text("⚙️ <b>تنظیمات:</b>", reply_markup=_sets_kb())
+        return
+    prompts = {"trial_days": "⏱️ مدت اکانت تست (روز)؟",
+               "trial_vol": "📊 حجم اکانت تست (گیگ، ۰ = نامحدود)؟",
+               "ref_days": "🎁 هدیه دعوت‌کننده (روز)؟",
+               "force_ch": "📢 آیدی کانال؟ (@username یا آیدی عددی)\n⚠️ ربات باید ادمین کانال باشد.",
+               "force_url": "🔗 لینک عضویت کانال؟ (https://t.me/... یا - برای خودکار)"}
+    keys = {"trial_days": "trial_days", "trial_vol": "trial_volume_gb",
+            "ref_days": "referral_days", "force_ch": "force_channel",
+            "force_url": "force_url"}
+    if action not in prompts:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await state.set_state(SetVal.value)
+    await state.update_data(key=keys[action])
+    await c.message.edit_text(prompts[action], reply_markup=kb.cancel_state())
+    await c.answer()
+
+
+@router.message(SetVal.value, F.text)
+async def st_set_value(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    d = await state.get_data()
+    key, val = d["key"], m.text.strip()
+    if key in ("trial_days", "trial_volume_gb", "referral_days"):
+        num = val.replace("٫", ".")
+        if key == "trial_volume_gb":
+            try:
+                num_f = float(num)
+                assert num_f >= 0
+            except (ValueError, AssertionError):
+                await m.answer("عدد معتبر (۰ = نامحدود):")
+                return
+            val = str(num_f)
+        else:
+            if not num.isdigit() or int(num) <= 0:
+                await m.answer("فقط عدد مثبت:")
+                return
+    elif key == "force_channel":
+        if not (val.startswith("@") or (val.lstrip("-").isdigit())):
+            await m.answer("با @شروع شود یا آیدی عددی باشد:")
+            return
+        if val.startswith("@"):
+            db.set_setting("force_url", "")  # لینک خودکار t.me
+    elif key == "force_url":
+        if val == "-":
+            val = ""
+        elif not val.startswith(("http://", "https://", "tg://")):
+            await m.answer("لینک معتبر نیست:")
+            return
+    db.set_setting(key, val)
+    await state.clear()
+    await m.answer("✅ ذخیره شد.", reply_markup=_sets_kb())
