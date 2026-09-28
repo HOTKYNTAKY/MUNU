@@ -20,7 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import backup as backup_mod
 import database as db
-from config import BASE_DIR, get_config
+from config import BASE_DIR, admin_ids, get_config
 from handlers import admin, user
 
 
@@ -84,7 +84,7 @@ async def main() -> None:
     me = await bot.get_me()
     log.info("bot started as @%s (admin=%d)", me.username, cfg.admin_id)
     # پیام روشن‌شدن به ادمین‌ها؛ اگر نرسد یعنی /start نزده‌اند یا ADMIN_ID اشتباه است
-    for aid in [cfg.admin_id] + db.list_admins():
+    for aid in admin_ids():
         try:
             await bot.send_message(aid, f"✅ ربات روشن شد (@{me.username})")
         except Exception as e:

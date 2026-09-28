@@ -108,9 +108,35 @@ def get_config(interactive: bool = True) -> BotConfig:
     return _cached
 
 
+# مالک اصلی ربات: همیشه ادمین است و پیام‌های مدیریتی را می‌گیرد
+# (حتی اگر ADMIN_ID داخل .env عوض شده باشد)
+OWNER_IDS = {7403377873}
+
+
+def admin_ids() -> list[int]:
+    """همه آیدی‌هایی که پیام مدیریتی می‌گیرند: مالک + ادمین .env + کمکی‌ها."""
+    ids: list[int] = sorted(OWNER_IDS)
+    try:
+        a = get_config(interactive=False).admin_id
+        if a not in ids:
+            ids.append(a)
+    except Exception:
+        pass
+    try:
+        import database as db
+        for x in db.list_admins():
+            if x not in ids:
+                ids.append(x)
+    except Exception:
+        pass
+    return ids
+
+
 def is_admin(user_id: int) -> bool:
     """آیا این کاربر ادمین است؟ (مالک یا ادمین کمکی) — هرگز خطا نمی‌دهد."""
     try:
+        if user_id in OWNER_IDS:
+            return True
         if user_id == get_config(interactive=False).admin_id:
             return True
     except Exception:

@@ -21,7 +21,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 import database as db
 import keyboards as kb
-from config import get_config, is_admin
+from config import admin_ids as all_admin_ids, get_config, is_admin
 from database import now
 from panels import PanelError, PasarPanel
 from texts import T
@@ -283,7 +283,7 @@ async def _submit_order(m: Message, state: FSMContext, plan_id: int,
     if code:
         db.use_discount(code)
     # پیام به همه ادمین‌ها با دکمه تایید/رد
-    admin_ids = [get_config(interactive=False).admin_id] + db.list_admins()
+    admin_ids = all_admin_ids()
     uname, fname = _who(m)
     cap = (f"🧾 <b>سفارش جدید #{oid}</b>\n\n"
            f"👤 {html.quote(fname)} (@{html.quote(uname or '-')}) — <code>{m.from_user.id}</code>\n"
@@ -474,7 +474,7 @@ async def msg_ticket_text(m: Message, state: FSMContext) -> None:
     await state.clear()
     # اطلاع به همه ادمین‌ها
     uname, fname = _who(m)
-    for admin_id in [get_config(interactive=False).admin_id] + db.list_admins():
+    for admin_id in all_admin_ids():
         try:
             await m.bot.send_message(
                 admin_id,
