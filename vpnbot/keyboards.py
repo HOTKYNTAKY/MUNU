@@ -46,6 +46,7 @@ def main_menu(user_id: int = 0) -> InlineKeyboardMarkup:
     rows = [
         (T("btn_buy"), "plans"),
         (T("btn_mysub"), "mysub"),
+        (T("btn_wallet"), "wallet"),
     ]
     if user_id and db.get_setting("trial_enabled") == "1":
         u = db.get_user(user_id)
@@ -75,6 +76,7 @@ def plan_detail(plan_id: int) -> InlineKeyboardMarkup:
     return _mk(
         (T("btn_buy_this"), f"pay:{plan_id}"),
         (T("btn_discount"), f"disc:{plan_id}"),
+        (T("btn_wpay"), f"wpay:{plan_id}"),
         (T("btn_plans"), "plans"),
     )
 
@@ -123,11 +125,12 @@ def force_join(url: str) -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------- پنل ادمین
-def admin_menu(n_orders: int = 0, n_tickets: int = 0) -> InlineKeyboardMarkup:
+def admin_menu(n_orders: int = 0, n_tickets: int = 0, n_topups: int = 0) -> InlineKeyboardMarkup:
     return _mk(
         ("📊 آمار", "adm:stats"),
         (f"🧾 سفارش‌های در انتظار ({n_orders})", "adm:orders"),
         (f"🎫 تیکت‌های باز ({n_tickets})", "adm:tickets"),
+        (f"💰 شارژهای در انتظار ({n_topups})", "adm:topups"),
         ("💎 پلن‌ها", "adm:plans"),
         ("🖥️ سرورها", "adm:srv"),
         ("🛡️ پنل‌های پاسارگارد", "adm:panels"),
@@ -142,7 +145,7 @@ def admin_menu(n_orders: int = 0, n_tickets: int = 0) -> InlineKeyboardMarkup:
         ("⚙️ تنظیمات (تست/دعوت/جوین)", "adm:sets"),
         ("💾 بکاپ فوری", "adm:backup"),
         ("♻️ ریستور", "adm:restore"),
-        widths=(1, 1, 1, 3, 2, 2, 2, 2, 1, 2),
+        widths=(1, 1, 1, 1, 3, 2, 2, 2, 2, 1, 2),
     )
 
 
@@ -195,6 +198,7 @@ def admin_users(users: list[dict]) -> InlineKeyboardMarkup:
 def admin_user_detail(u: dict) -> InlineKeyboardMarkup:
     return _mk(
         ("➕ افزایش روز اشتراک", f"usr:days:{u['id']}"),
+        ("💰 تغییر موجودی", f"usr:bal:{u['id']}"),
         ("🚫 مسدود" if not u["banned"] else "✅ رفع مسدودیت", f"usr:ban:{u['id']}"),
         ("🔙 کاربران", "adm:users"),
     )
@@ -355,4 +359,28 @@ def settings_menu(s: dict[str, str]) -> InlineKeyboardMarkup:
         (f"🔗 لینک جوین: {(s['force_url'] or 'خودکار')[:24]}", "set:force_url"),
         ("🔙 پنل ادمین", "adm"),
         widths=(2, 2, 2, 2, 1),
+    )
+
+
+def wallet_menu() -> InlineKeyboardMarkup:
+    return _mk(
+        (T("btn_topup"), "w:topup"),
+        (T("btn_tx"), "w:tx"),
+        (T("btn_back"), "back:main"),
+    )
+
+
+def admin_topups(topups: list[dict]) -> InlineKeyboardMarkup:
+    rows = [(f"#{t['id']} {t['full_name'] or t['username']} — {t['amount']:,}", f"top:{t['id']}") for t in topups]
+    rows.append(("🔙 پنل ادمین", "adm"))
+    return _mk(*rows)
+
+
+def topup_decide(topup_id: int) -> InlineKeyboardMarkup:
+    return _mk(
+        ("✅ تایید و شارژ", f"top:ok:{topup_id}"),
+        ("🧾 مشاهده رسید", f"top:view:{topup_id}"),
+        ("❌ رد", f"top:no:{topup_id}"),
+        ("🔙 شارژها", "adm:topups"),
+        widths=(1, 2, 1),
     )

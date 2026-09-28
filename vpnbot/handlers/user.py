@@ -20,6 +20,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 import database as db
+import delivery
 import keyboards as kb
 from config import admin_ids as all_admin_ids, get_config, is_admin
 from database import now
@@ -40,6 +41,12 @@ class Buy(StatesGroup):
 class Ticket(StatesGroup):
     """وضعیت نوشتن تیکت."""
     waiting_text = State()
+
+
+class Topup(StatesGroup):
+    """شارژ کیف پول: مبلغ / رسید."""
+    amount = State()
+    receipt = State()
 
 
 def _who(m: Message) -> tuple[str, str]:
@@ -514,4 +521,127 @@ async def cb_ticket_view(c: CallbackQuery) -> None:
     await px_edit(c.message, txt, kb.support_menu())
     await c.answer()
     await px_edit(c.message, txt, kb.support_menu())
+    await c.answer()
+
+
+# ---------------------------------------------------------------- کیف پول
+@router.callback_query(F.data == "wallet")
+async def cb_wallet(c: CallbackQuery) -> None:
+    bal = db.get_balance(c.from_user.id)
+    await px_edit(c.message, T("msg_wallet", balance=f"{bal:,} تومان"), kb.wallet_menu())
+    await c.answer()
+
+
+@router.callback_query(F.data == "w:topup")
+async def cb_topup_start(c: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(Topup.amount)
+    await px_edit(c.message, T("msg_topup_amount"), kb.cancel_state())
+    await c.answer()
+
+
+@router.message(Topup.amount, F.text)
+async def msg_topup_amount(m: Message, state: FSMContext) -> None:
+    num = m.text.strip().replace(",", "").replace("٬", "")
+    if not num.isdigit() or int(num) <= 0:
+        await m.answer("فقط عدد مثبت (تومان):")
+        return
+    card = db.get_setting("card_number")
+    if not card:
+        await state.clear()
+        await px(m.bot, m.chat.id, T("msg_pay_off"), kb.back_main())
+        return
+    await state.update_data(amount=int(num))
+    await state.set_state(Topup.receipt)
+    await px(m.bot, m.chat.id, T("msg_topup_pay", amount=fmt_price(int(num)),
+                                 card=html.quote(card),
+                                 holder=html.quote(db.get_setting("card_holder") or "-")),
+             kb.cancel_state())
+
+
+@router.message(Topup.receipt, F.photo)
+async def msg_topup_receipt_photo(m: Message, state: FSMContext) -> None:
+    d = await state.get_data()
+    await _submit_topup(m, state, d.get("amount") or 0,
+                        receipt_file_id=m.photo[-1].file_id)
+
+
+@router.message(Topup.receipt, F.text)
+async def msg_topup_receipt_text(m: Message, state: FSMContext) -> None:
+    if len(m.text.strip()) < 4:
+        await m.answer("متن کوتاه است؛ شماره پیگیری یا توضیح رسید را کامل بفرست:")
+        return
+    d = await state.get_data()
+    await _submit_topup(m, state, d.get("amount") or 0, receipt_text=m.text.strip())
+
+
+async def _submit_topup(m: Message, state: FSMContext, amount: int,
+                        receipt_file_id: str = "", receipt_text: str = "") -> None:
+    """ثبت درخواست شارژ + اطلاع به همه ادمین‌ها."""
+    await state.clear()
+    if amount <= 0:
+        await px(m.bot, m.chat.id, T("msg_topup_amount"), _menu(m.from_user.id))
+        return
+    tid = db.create_topup(m.from_user.id, amount, receipt_file_id, receipt_text)
+    uname, fname = _who(m)
+    cap = (f"💰 <b>درخواست شارژ #{tid}</b>\n\n"
+           f"👤 {html.quote(fname)} (@{html.quote(uname or '-')}) — <code>{m.from_user.id}</code>\n"
+           f"💵 مبلغ: {fmt_price(amount)}")
+    for admin_id in all_admin_ids():
+        try:
+            if receipt_file_id:
+                await m.bot.send_photo(admin_id, receipt_file_id, caption=cap,
+                                       reply_markup=kb.topup_decide(tid))
+            else:
+                await m.bot.send_message(admin_id, cap + f"\n📝 رسید: {html.quote(receipt_text)}",
+                                         reply_markup=kb.topup_decide(tid))
+        except Exception:
+            log.warning("notify admin %d for topup %d failed", admin_id, tid)
+    await px(m.bot, m.chat.id, T("msg_topup_ok"), _menu(m.from_user.id))
+
+
+@router.callback_query(F.data == "w:tx")
+async def cb_wallet_tx(c: CallbackQuery) -> None:
+    txs = db.list_wallet_tx(c.from_user.id)
+    if not txs:
+        await px_edit(c.message, T("msg_tx_empty"), kb.wallet_menu())
+    else:
+        icons = {"topup": "➕", "purchase": "🛒", "refund": "↩️", "adjust": "✏️"}
+        names = {"topup": "شارژ", "purchase": "خرید", "refund": "برگشت", "adjust": "اصلاح"}
+        lines = [f"{icons.get(t['kind'], '•')} {names.get(t['kind'], t['kind'])}: "
+                 f"{t['amount']:+,} → موجودی {t['balance_after']:,}" for t in txs]
+        await px_edit(c.message, T("msg_tx_title") + "\n\n" + "\n".join(lines), kb.wallet_menu())
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("wpay:"))
+async def cb_wallet_pay(c: CallbackQuery) -> None:
+    """پرداخت فوری با کیف پول (بدون نیاز به تایید ادمین)."""
+    p = db.get_plan(int(c.data.split(":")[1]))
+    if not p or not p["active"]:
+        await c.answer("این پلن موجود نیست.", show_alert=True)
+        return
+    bal = db.get_balance(c.from_user.id)
+    if bal < p["price"]:
+        await px_edit(c.message, T("msg_wpay_low", price=fmt_price(p["price"]),
+                                   balance=f"{bal:,} تومان"), kb.wallet_menu())
+        await c.answer()
+        return
+    oid = db.create_order(c.from_user.id, p["id"], p["price"], receipt_text="💰 پرداخت با کیف پول")
+    db.add_balance(c.from_user.id, -p["price"], "purchase", f"order {oid}")
+    ok, note = await delivery.deliver(c.bot, oid)
+    if ok:
+        bal2 = db.get_balance(c.from_user.id)
+        subs = db.active_subscriptions(c.from_user.id)
+        mk = kb.my_subs(subs) if subs else kb.back_main()
+        await px_edit(c.message, T("msg_wpay_ok", price=fmt_price(p["price"]),
+                                   balance=f"{bal2:,} تومان"), mk)
+    else:
+        db.add_balance(c.from_user.id, p["price"], "refund", f"order {oid}")
+        db.set_order_status(oid, "rejected")
+        for aid in all_admin_ids():
+            try:
+                await c.bot.send_message(aid, f"⚠️ پرداخت کیف‌پولی سفارش #{oid} ناموفق بود و مبلغ برگشت خورد.\nعلت: {html.quote(note)}")
+            except Exception:
+                pass
+        await px_edit(c.message, T("msg_wpay_fail", price=fmt_price(p["price"])), kb.support_menu())
     await c.answer()

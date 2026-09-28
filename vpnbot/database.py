@@ -119,6 +119,25 @@ CREATE TABLE IF NOT EXISTS panels(
 CREATE TABLE IF NOT EXISTS admins(
   user_id INTEGER PRIMARY KEY  -- ادمین‌های کمکی (علاوه بر مالک)
 );
+CREATE TABLE IF NOT EXISTS topups(
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL,
+  amount         INTEGER NOT NULL,          -- مبلغ به تومان
+  receipt_file_id TEXT,                    -- فایل رسید (عکس)
+  receipt_text   TEXT,                     -- رسید متنی
+  status         TEXT NOT NULL DEFAULT 'pending',  -- pending/approved/rejected
+  created_at     INTEGER NOT NULL,
+  decided_at     INTEGER
+);
+CREATE TABLE IF NOT EXISTS wallet_tx(
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL,
+  kind          TEXT NOT NULL,             -- topup/purchase/refund/adjust
+  amount        INTEGER NOT NULL,          -- مثبت/منفی
+  balance_after INTEGER NOT NULL,          -- موجودی بعد از تراکنش
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    INTEGER NOT NULL
+);
 """
 
 DEFAULT_SETTINGS = {
@@ -160,6 +179,7 @@ def _migrate(con: sqlite3.Connection) -> None:
     ensure("users", "trial_used", "INTEGER NOT NULL DEFAULT 0")
     ensure("users", "referred_by", "INTEGER NOT NULL DEFAULT 0")
     ensure("users", "bonus_days", "INTEGER NOT NULL DEFAULT 0")
+    ensure("users", "balance", "INTEGER NOT NULL DEFAULT 0")
     ensure("plans", "panel_id", "INTEGER NOT NULL DEFAULT 0")
     ensure("subscriptions", "panel_id", "INTEGER NOT NULL DEFAULT 0")
     ensure("subscriptions", "panel_username", "TEXT NOT NULL DEFAULT ''")
@@ -330,8 +350,8 @@ def active_subscriptions(user_id: int) -> list[dict]:
 
 
 def get_subscription(sub_id: int) -> dict | None:
-    return _all("""SELECT s.*, p.title AS plan_title FROM subscriptions s
-                   LEFT JOIN plans p ON p.id=s.plan_id WHERE s.id=?""", (sub_id,))[:1] or [None][0]
+    return _one("""SELECT s.*, p.title AS plan_title FROM subscriptions s
+                   LEFT JOIN plans p ON p.id=s.plan_id WHERE s.id=?""", (sub_id,))
 
 
 def extend_subscription(sub_id: int, days: int) -> None:
@@ -367,10 +387,10 @@ def create_order(user_id: int, plan_id: int, amount: int,
 
 
 def get_order(order_id: int) -> dict | None:
-    return _all("""SELECT o.*, p.title AS plan_title, p.days AS plan_days,
+    return _one("""SELECT o.*, p.title AS plan_title, p.days AS plan_days,
                           u.username, u.full_name
                    FROM orders o JOIN plans p ON p.id=o.plan_id
-                   LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?""", (order_id,))[:1] or [None][0]
+                   LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?""", (order_id,))
 
 
 def list_pending_orders() -> list[dict]:
@@ -396,8 +416,8 @@ def create_ticket(user_id: int, text: str) -> int:
 
 
 def get_ticket(ticket_id: int) -> dict | None:
-    return _all("""SELECT t.*, u.username, u.full_name FROM tickets t
-                   LEFT JOIN users u ON u.id=t.user_id WHERE t.id=?""", (ticket_id,))[:1] or [None][0]
+    return _one("""SELECT t.*, u.username, u.full_name FROM tickets t
+                   LEFT JOIN users u ON u.id=t.user_id WHERE t.id=?""", (ticket_id,))
 
 
 def list_open_tickets() -> list[dict]:
@@ -608,3 +628,57 @@ def take_bonus_days(user_id: int) -> int:
 def first_active_panel() -> dict | None:
     ps = [p for p in list_panels() if p["active"]]
     return ps[0] if ps else None
+
+
+def get_balance(user_id: int) -> int:
+    u = get_user(user_id)
+    return (u or {}).get("balance", 0) or 0
+
+
+def add_balance(user_id: int, delta: int, kind: str, note: str = "") -> int:
+    """تغییر موجودی + ثبت در دفتر. برمی‌گرداند: موجودی جدید."""
+    bal = get_balance(user_id) + delta
+    _exec("UPDATE users SET balance=? WHERE id=?", (bal, user_id))
+    _exec("INSERT INTO wallet_tx(user_id, kind, amount, balance_after, note, created_at)"
+          " VALUES(?, ?, ?, ?, ?, ?)",
+          (user_id, kind, delta, bal, note[:200], now()))
+    return bal
+
+
+def list_wallet_tx(user_id: int, limit: int = 10) -> list[dict]:
+    return _all("SELECT * FROM wallet_tx WHERE user_id=? ORDER BY id DESC LIMIT ?",
+                (user_id, limit))
+
+
+def wallet_income() -> int:
+    r = _one("SELECT COALESCE(SUM(amount),0) s FROM wallet_tx WHERE kind='topup'")
+    return r["s"] if r else 0
+
+
+def create_topup(user_id: int, amount: int, receipt_file_id: str = "",
+                 receipt_text: str = "") -> int:
+    return _exec("INSERT INTO topups(user_id, amount, receipt_file_id, receipt_text, created_at)"
+                 " VALUES(?, ?, ?, ?, ?)",
+                 (user_id, amount, receipt_file_id, receipt_text, now()))
+
+
+def get_topup(topup_id: int) -> dict | None:
+    return _one("""SELECT t.*, u.username, u.full_name FROM topups t
+                   LEFT JOIN users u ON u.id=t.user_id WHERE t.id=?""",
+                (topup_id,))
+
+
+def list_pending_topups() -> list[dict]:
+    return _all("""SELECT t.*, u.username, u.full_name FROM topups t
+                   LEFT JOIN users u ON u.id=t.user_id
+                   WHERE t.status='pending' ORDER BY t.id""")
+
+
+def count_pending_topups() -> int:
+    r = _one("SELECT COUNT(*) n FROM topups WHERE status='pending'")
+    return r["n"] if r else 0
+
+
+def set_topup_status(topup_id: int, status: str) -> None:
+    _exec("UPDATE topups SET status=?, decided_at=? WHERE id=?",
+          (status, now(), topup_id))

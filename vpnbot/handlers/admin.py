@@ -16,6 +16,7 @@ from aiogram import html
 
 import backup as backup_mod
 import database as db
+import delivery
 import keyboards as kb
 from config import get_config, is_admin
 from database import now
@@ -84,8 +85,9 @@ async def _admin_ok(ev: Message | CallbackQuery) -> bool:
 def _panel_text() -> tuple[str, object]:
     n_orders = len(db.list_pending_orders())
     n_tickets = db.count_open_tickets()
-    return (f"👑 <b>پنل مدیریت</b>\n\n🧾 سفارش در انتظار: {n_orders}\n🎫 تیکت باز: {n_tickets}",
-            kb.admin_menu(n_orders, n_tickets))
+    n_topups = db.count_pending_topups()
+    return (f"👑 <b>پنل مدیریت</b>\n\n🧾 سفارش در انتظار: {n_orders}\n🎫 تیکت باز: {n_tickets}\n💰 شارژ در انتظار: {n_topups}",
+            kb.admin_menu(n_orders, n_tickets, n_topups))
 
 
 # ---------------------------------------------------------------- ورود و آمار
@@ -132,6 +134,7 @@ def _stats_text() -> str:
         f"🎫 تیکت باز: {db.count_open_tickets()}\n"
         f"💰 فروش کل: {fmt_price(db.revenue_total())}\n"
         f"💰 فروش ۳۰ روز: {fmt_price(db.revenue_total(month_ago))}"
+        f"\n💰 مجموع شارژ کیف پول: {fmt_price(db.wallet_income())}"
     )
 
 
@@ -142,10 +145,10 @@ async def cb_orders(c: CallbackQuery) -> None:
         return
     orders = db.list_pending_orders()
     if not orders:
-        await c.message.edit_text("🧾 سفارش در انتظاری نیست. 🎉", reply_markup=kb.back_admin())
+        txt, mk = "🧾 سفارش در انتظاری نیست. 🎉", kb.back_admin()
     else:
-        await c.message.edit_text("🧾 <b>سفارش‌های در انتظار:</b>",
-                                  reply_markup=kb.admin_orders(orders))
+        txt, mk = "🧾 <b>سفارش‌های در انتظار:</b>", kb.admin_orders(orders)
+    await _adm_edit(c, txt, mk)
     await c.answer()
 
 
@@ -191,131 +194,29 @@ async def cb_order_detail(c: CallbackQuery) -> None:
     await c.answer()
 
 
-async def _reward_referrer(bot, ref_id: int) -> None:
-    """هدیه اولین خرید دعوتی: تمدید اشتراک فعال، وگرنه بونوس محفوظ."""
-    days = int(db.get_setting("referral_days") or 3)
-    if db.get_setting("referral_enabled") != "1" or days <= 0:
-        return
-    subs = db.active_subscriptions(ref_id)
-    if subs:
-        db.extend_subscription(subs[-1]["id"], days)
-        extra = ""
-    else:
-        db.add_bonus_days(ref_id, days)
-        extra = "\nچون اشتراک فعالی نداری، این هدیه محفوظ ماند و به خرید بعدیت اضافه می‌شود 🎖️"
-    try:
-        await bot.send_message(ref_id, T("msg_ref_bonus", days=days) + extra)
-    except Exception:
-        log.warning("cannot notify referrer %d", ref_id)
-
-
 @router.callback_query(F.data.startswith("ord:ok:"))
 async def cb_order_ok(c: CallbackQuery) -> None:
-    """تایید سفارش: تمدید یا ساخت تازه + تحویل دستی/پنلی + هدیه دعوت."""
+    """تایید سفارش توسط ادمین (تحویل در delivery انجام می‌شود)."""
     if not await _admin_ok(c):
         return
-    o = db.get_order(int(c.data.split(":")[2]))
+    oid = int(c.data.split(":")[2])
+    o = db.get_order(oid)
     if not o or o["status"] != "pending":
         await c.answer("این سفارش قبلاً تعیین‌تکلیف شده.", show_alert=True)
         return
-    plan = db.get_plan(o["plan_id"])
-    panel = db.get_panel(plan["panel_id"]) if plan and plan["panel_id"] else None
-    if panel and not panel["active"]:
-        panel = None
-    first_buy = not db.has_approved_order(o["user_id"])
-    bonus = db.take_bonus_days(o["user_id"])  # هدیه‌های دعوت محفوظ
-    total_days = o["plan_days"] + bonus
-
-    # ۱) اگر اشتراک فعال دارد → تمدید همان (+ تمدید در پنل)
-    subs = db.active_subscriptions(o["user_id"])
-    if subs:
-        sub = subs[-1]  # دیرترین انقضا
-        db.extend_subscription(sub["id"], total_days)
-        s = db.get_subscription(sub["id"])
-        if panel and sub["panel_id"] == panel["id"] and sub["panel_username"]:
-            try:
-                cli = PasarPanel(panel["base_url"], panel["api_key"],
-                                 panel["username"], panel["password"])
-                await cli.extend_user(sub["panel_username"], s["expires_at"])
-            except PanelError as e:
-                log.warning("panel extend failed for order %d: %s", o["id"], e)
-        db.set_order_status(o["id"], "approved")
-        user_msg = (f"✅ پرداختت تایید و اشتراکت <b>تمدید</b> شد!\n\n"
-                    f"⏳ انقضای جدید: {fmt_dt(s['expires_at'])}\n"
-                    f"⏰ باقی‌مانده: {fmt_left(s['expires_at'], now())}"
-                    + (f"\n\n🎖️ {bonus} روز هدیه دعوت هم بهش اضافه شد!" if bonus else ""))
-    elif panel:
-        # ۲) ساخت خودکار یوزر در پنل پاسارگارد
-        uname = panel_uname(o["user_id"], f"o{o['id']}")
-        try:
-            cli = PasarPanel(panel["base_url"], panel["api_key"],
-                             panel["username"], panel["password"])
-            gids = [int(x) for x in (panel["group_ids"] or "").split(",") if x.strip().isdigit()]
-            resp = await cli.create_user(
-                uname, now() + total_days * 86400,
-                int((plan["volume_gb"] or 0) * 1024 ** 3),
-                note=f"order {o['id']} user {o['user_id']}", group_ids=gids)
-        except PanelError as e:
-            db.add_bonus_days(o["user_id"], bonus)  # برگرداندن بونوس
-            await c.answer(f"❌ خطای پنل: {e}", show_alert=True)
-            return
-        link = cli.absolute_sub_url(resp)
-        db.create_subscription(o["user_id"], o["plan_id"], panel["name"], link,
-                               total_days, panel_id=panel["id"],
-                               panel_username=uname, sub_link=link)
-        db.set_order_status(o["id"], "approved")
-        user_msg = (f"✅ پرداختت تایید شد! اشتراک فعال شد 🎉\n\n"
-                    f"💎 {html.quote(o['plan_title'])}\n"
-                    f"🖥️ سرور: {html.quote(panel['name'])}\n"
-                    f"⏳ انقضا: {fmt_left(now() + total_days * 86400, now())}"
-                    + (f"\n🎖️ شامل {bonus} روز هدیه دعوت!" if bonus else "") + "\n\n"
-                    f"🔗 لینک اشتراکت:\n<code>{html.quote(link)}</code>\n\n"
-                    "از بخش «📦 اشتراک‌های من» هم می‌توانی QR آن را بگیری 📷")
-    else:
-        # ۳) دستی: اول از استخر آماده، بعد از قالب سرور
-        cfg, server_name = None, ""
-        free = db.get_free_config()
-        if free:
-            db.assign_config(free["id"], o["user_id"])
-            cfg, server_name = free["config_text"], free["server_name"]
-        else:
-            srv = db.template_server()
-            if srv:
-                cfg = render_template(srv["template"], sub_email(o["user_id"]))
-                server_name = srv["name"]
-        if not cfg:
-            db.add_bonus_days(o["user_id"], bonus)  # برگرداندن بونوس
-            await c.answer("❌ کانفیگ آزادی نیست! اول از «سرورها» کانفیگ اضافه کن.",
-                           show_alert=True)
-            return
-        db.create_subscription(o["user_id"], o["plan_id"], server_name, cfg, total_days)
-        db.set_order_status(o["id"], "approved")
-        user_msg = (f"✅ پرداختت تایید شد! اشتراک فعال شد 🎉\n\n"
-                    f"💎 {html.quote(o['plan_title'])}\n"
-                    f"🖥️ سرور: {html.quote(server_name)}\n"
-                    f"⏳ انقضا: {fmt_left(now() + total_days * 86400, now())}"
-                    + (f"\n🎖️ شامل {bonus} روز هدیه دعوت!" if bonus else "") + "\n\n"
-                    f"📋 کانفیگت:\n<code>{html.quote(cfg[:3800])}</code>")
-
-    # ۴) هدیه دعوت‌کننده در اولین خرید
-    if first_buy:
-        u = db.get_user(o["user_id"])
-        if u and u["referred_by"]:
-            await _reward_referrer(c.bot, u["referred_by"])
-
-    try:
-        await c.bot.send_message(o["user_id"], user_msg)
-    except Exception:
-        log.warning("cannot notify user %d", o["user_id"])
+    ok, note = await delivery.deliver(c.bot, oid)
+    if not ok:
+        await c.answer(note, show_alert=True)
+        return
     try:
         if c.message.photo:  # نوتیف رسید عکس‌دار است → کپشن ویرایش می‌شود
-            await c.message.edit_caption(caption=f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+            await c.message.edit_caption(caption=f"✅ سفارش #{oid} تایید و تحویل داده شد.",
                                          reply_markup=kb.back_admin())
         else:
-            await c.message.edit_text(f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+            await c.message.edit_text(f"✅ سفارش #{oid} تایید و تحویل داده شد.",
                                       reply_markup=kb.back_admin())
     except Exception:
-        await c.message.answer(f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+        await c.message.answer(f"✅ سفارش #{oid} تایید و تحویل داده شد.",
                                reply_markup=kb.back_admin())
     await c.answer("تایید شد ✅")
 
@@ -554,6 +455,7 @@ def _user_text(u: dict) -> str:
         f"🕐 عضویت: {fmt_dt(u['created_at'])}\n"
         f"🎁 تست: {'گرفته ✅' if u['trial_used'] else 'نگرفته'} | "
         f"🎖️ بونوس محفوظ: {u['bonus_days']} روز | 👥 دعوتی‌ها: {db.count_referrals(u['id'])}\n"
+        f"💵 موجودی کیف پول: {u['balance']:,} تومان\n"
         f"📦 اشتراک‌های فعال:\n" + "\n".join(sub_lines)
     )
 
@@ -570,6 +472,13 @@ async def cb_user_router(c: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(AddDays.days)
         await state.update_data(user_id=int(parts[2]))
         await c.message.edit_text("➕ چند روز اضافه شود؟ (به همه اشتراک‌های فعال)",
+                                  reply_markup=kb.cancel_state())
+        await c.answer()
+        return
+    if action == "bal":
+        await state.set_state(BalAdd.value)
+        await state.update_data(user_id=int(parts[2]))
+        await c.message.edit_text("💰 مبلغ تغییر موجودی؟ (عدد مثبت برای افزایش، منفی برای کاهش)",
                                   reply_markup=kb.cancel_state())
         await c.answer()
         return
@@ -1526,3 +1435,123 @@ async def st_set_value(m: Message, state: FSMContext) -> None:
     db.set_setting(key, val)
     await state.clear()
     await m.answer("✅ ذخیره شد.", reply_markup=_sets_kb())
+
+
+# ---------------------------------------------------------------- شارژهای کیف پول
+class BalAdd(StatesGroup):
+    value = State()
+
+
+@router.message(BalAdd.value, F.text)
+async def st_bal_value(m: Message, state: FSMContext) -> None:
+    if not await _admin_ok(m):
+        return
+    num = m.text.strip().replace(",", "").replace("٬", "")
+    if not num.lstrip("-").isdigit() or int(num) == 0:
+        await m.answer("عدد غیرصفر (مثبت/منفی):")
+        return
+    d = await state.get_data()
+    bal = db.add_balance(d["user_id"], int(num), "adjust", "توسط ادمین")
+    await state.clear()
+    await m.answer(f"✅ موجودی جدید: {bal:,} تومان", reply_markup=kb.back_admin())
+
+
+async def _adm_edit(c: CallbackQuery, txt: str, mk) -> None:
+    """ویرایش پیام ادمین (متن یا کپشن عکس) با fallback به پیام تازه."""
+    try:
+        if c.message.photo:
+            await c.message.edit_caption(caption=txt, reply_markup=mk)
+        else:
+            await c.message.edit_text(txt, reply_markup=mk)
+    except Exception:
+        await c.message.answer(txt, reply_markup=mk)
+
+
+@router.callback_query(F.data == "adm:topups")
+async def cb_topups(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    ts = db.list_pending_topups()
+    if not ts:
+        txt, mk = "💰 شارژ در انتظاری نیست. 🎉", kb.back_admin()
+    else:
+        txt, mk = "💰 <b>شارژهای در انتظار:</b>", kb.admin_topups(ts)
+    await _adm_edit(c, txt, mk)
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("top:view:"))
+async def cb_topup_view(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    t = db.get_topup(int(c.data.split(":")[2]))
+    if not t:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    if t["receipt_file_id"]:
+        await c.message.answer_photo(t["receipt_file_id"],
+                                     caption=f"🧾 رسید شارژ #{t['id']}")
+    elif t["receipt_text"]:
+        await c.message.answer(f"🧾 رسید شارژ #{t['id']}:\n{html.quote(t['receipt_text'])}")
+    else:
+        await c.answer("رسیدی ثبت نشده.", show_alert=True)
+        return
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("top:"))
+async def cb_topup_detail(c: CallbackQuery) -> None:
+    """نمایش شارژ (top:{id}) — تایید/رد جدا هندل می‌شوند."""
+    if not await _admin_ok(c):
+        return
+    parts = c.data.split(":")
+    if parts[1] in ("ok", "no", "view"):
+        return  # هندلرهای مخصوص خودشان
+    t = db.get_topup(int(parts[1]))
+    if not t:
+        await c.answer("یافت نشد.", show_alert=True)
+        return
+    await _adm_edit(c,
+        f"💰 <b>درخواست شارژ #{t['id']}</b> — {t['status']}\n\n"
+        f"👤 {html.quote(t['full_name'] or '')} (@{html.quote(t['username'] or '-')}) <code>{t['user_id']}</code>\n"
+        f"💵 مبلغ: {t['amount']:,} تومان\n"
+        f"🕐 {fmt_dt(t['created_at'])}",
+        kb.topup_decide(t["id"]))
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith("top:ok:"))
+async def cb_topup_ok(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    t = db.get_topup(int(c.data.split(":")[2]))
+    if not t or t["status"] != "pending":
+        await c.answer("قبلاً تعیین‌تکلیف شده.", show_alert=True)
+        return
+    db.set_topup_status(t["id"], "approved")
+    bal = db.add_balance(t["user_id"], t["amount"], "topup", f"topup {t['id']}")
+    try:
+        await c.bot.send_message(t["user_id"],
+            f"✅ کیف پولت {t['amount']:,} تومان شارژ شد!\n💵 موجودی: {bal:,} تومان")
+    except Exception:
+        log.warning("cannot notify user %d (topup %d)", t["user_id"], t["id"])
+    await _adm_edit(c, f"✅ شارژ #{t['id']} تایید شد.", kb.back_admin())
+    await c.answer("تایید شد ✅")
+
+
+@router.callback_query(F.data.startswith("top:no:"))
+async def cb_topup_no(c: CallbackQuery) -> None:
+    if not await _admin_ok(c):
+        return
+    t = db.get_topup(int(c.data.split(":")[2]))
+    if not t or t["status"] != "pending":
+        await c.answer("قبلاً تعیین‌تکلیف شده.", show_alert=True)
+        return
+    db.set_topup_status(t["id"], "rejected")
+    try:
+        await c.bot.send_message(t["user_id"],
+            f"❌ درخواست شارژ #{t['id']} رد شد.\nاگر واریز کرده‌ای، با پشتیبانی در تماس باش.")
+    except Exception:
+        log.warning("cannot notify user %d (topup %d rejected)", t["user_id"], t["id"])
+    await _adm_edit(c, f"❌ شارژ #{t['id']} رد شد.", kb.back_admin())
+    await c.answer()
