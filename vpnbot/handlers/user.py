@@ -9,7 +9,10 @@ import io
 import logging
 import uuid
 
-import segno
+try:
+    import segno  # اختیاری: اگر نصب نباشد فقط دکمه QR غیرفعال می‌شود
+except ImportError:
+    segno = None  # type: ignore
 from aiogram import F, Router, html
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -97,6 +100,12 @@ async def cmd_start(m: Message) -> None:
     name = html.quote(m.from_user.first_name or "دوست")
     await px(m.bot, m.chat.id, T("msg_welcome").replace("{name}", name),
              _menu(m.from_user.id))
+
+
+@router.message(Command("id"))
+async def cmd_id(m: Message) -> None:
+    """نمایش آیدی عددی (برای عیب‌یابی دسترسی ادمین)."""
+    await m.answer(f"🆔 آیدی تو: <code>{m.from_user.id}</code>")
 
 
 @router.message(Command("cancel"))
@@ -426,6 +435,9 @@ async def cb_qr(c: CallbackQuery) -> None:
     link = (s["sub_link"] or "").strip() or (s["config_text"] or "").strip()
     if not link or "\n" in link or len(link) > 2000:
         await c.answer("برای این اشتراک QR موجود نیست.", show_alert=True)
+        return
+    if segno is None:
+        await c.answer("QR فعلاً در دسترس نیست (کتابخانه‌اش نصب نشده).", show_alert=True)
         return
     buf = io.BytesIO()
     segno.make(link).save(buf, kind="png", scale=6)

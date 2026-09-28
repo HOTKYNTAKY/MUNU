@@ -307,8 +307,16 @@ async def cb_order_ok(c: CallbackQuery) -> None:
         await c.bot.send_message(o["user_id"], user_msg)
     except Exception:
         log.warning("cannot notify user %d", o["user_id"])
-    await c.message.edit_text(f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
-                              reply_markup=kb.back_admin())
+    try:
+        if c.message.photo:  # نوتیف رسید عکس‌دار است → کپشن ویرایش می‌شود
+            await c.message.edit_caption(caption=f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+                                         reply_markup=kb.back_admin())
+        else:
+            await c.message.edit_text(f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+                                      reply_markup=kb.back_admin())
+    except Exception:
+        await c.message.answer(f"✅ سفارش #{o['id']} تایید و تحویل داده شد.",
+                               reply_markup=kb.back_admin())
     await c.answer("تایید شد ✅")
 
 
@@ -325,9 +333,16 @@ async def cb_order_no(c: CallbackQuery) -> None:
         await c.bot.send_message(o["user_id"],
                                  f"❌ سفارش #{o['id']} ({html.quote(o['plan_title'])}) رد شد.\n"
                                  "اگر واریز کرده‌ای، با پشتیبانی در تماس باش.")
+    except Exception as e:
+        log.warning("cannot notify user %d (order %d rejected): %s", o["user_id"], o["id"], e)
+    try:
+        if c.message.photo:
+            await c.message.edit_caption(caption=f"❌ سفارش #{o['id']} رد شد.",
+                                         reply_markup=kb.back_admin())
+        else:
+            await c.message.edit_text(f"❌ سفارش #{o['id']} رد شد.", reply_markup=kb.back_admin())
     except Exception:
-        pass
-    await c.message.edit_text(f"❌ سفارش #{o['id']} رد شد.", reply_markup=kb.back_admin())
+        await c.message.answer(f"❌ سفارش #{o['id']} رد شد.", reply_markup=kb.back_admin())
     await c.answer()
 
 

@@ -83,6 +83,12 @@ async def main() -> None:
 
     me = await bot.get_me()
     log.info("bot started as @%s (admin=%d)", me.username, cfg.admin_id)
+    # پیام روشن‌شدن به ادمین‌ها؛ اگر نرسد یعنی /start نزده‌اند یا ADMIN_ID اشتباه است
+    for aid in [cfg.admin_id] + db.list_admins():
+        try:
+            await bot.send_message(aid, f"✅ ربات روشن شد (@{me.username})")
+        except Exception as e:
+            log.warning("cannot message admin %d on startup: %s", aid, e)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 

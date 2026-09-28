@@ -109,9 +109,12 @@ def get_config(interactive: bool = True) -> BotConfig:
 
 
 def is_admin(user_id: int) -> bool:
-    """آیا این کاربر ادمین است؟ (مالک یا ادمین کمکی)"""
-    if user_id == get_config(interactive=False).admin_id:
-        return True
+    """آیا این کاربر ادمین است؟ (مالک یا ادمین کمکی) — هرگز خطا نمی‌دهد."""
+    try:
+        if user_id == get_config(interactive=False).admin_id:
+            return True
+    except Exception:
+        return False
     try:
         import database as db
         return db.is_extra_admin(user_id)
